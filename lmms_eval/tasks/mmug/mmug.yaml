@@ -1,0 +1,6 @@
+group: mmug
+task:
+- mmug_dev
+# - mmug_easy
+# - mmug_medium
+# - mmug_hard

@@ -1,0 +1,3 @@
+task: mmug_hard
+test_split: test_long_qa # TODO: change
+include: _default_template_yaml

@@ -1,0 +1,49 @@
+dataset_path: gzwei/MMUG
+dataset_kwargs:
+  token: True
+  cache_dir: mmug
+  video: True
+output_type: generate_until
+doc_to_visual: !function utils.mmug_doc_to_visual
+doc_to_text: !function utils.mmug_doc_to_text
+doc_to_target: "answer"
+generation_kwargs:
+  max_new_tokens: 16 # Might need to increase this if we want to evaluate generation
+  temperature: 0
+  top_p: 1.0
+  num_beams: 1
+  do_sample: false
+# The return value of process_results will be used by metrics
+process_results: !function utils.mmug_process_results
+# Note that the metric name can be either a registed metric function (such as the case for GQA) or a key name returned by process_results
+metric_list:
+  - metric: mmug_perception_score
+    aggregation: !function utils.mmug_multiple_choice_results
+    higher_is_better: true
+  - metric: mmug_gpt_score
+    aggregation: !function utils.mmug_gpt_score_results
+    higher_is_better: true
+
+lmms_eval_specific_kwargs:
+  # TODO: modify these
+  default:
+    pre_prompt: ""
+    post_prompt: "\nAnswer with the option's letter from the given choices directly."
+  gpt4v:
+    pre_prompt: ""
+    post_prompt: "Answer the question with A, B, C, or D."
+  llava_vid:
+    pre_prompt: ""
+    post_prompt: "The best answer is:"
+  # qwen_vl:  
+  #   pre_prompt: ""
+  #   post_prompt: " Answer:"
+  # otterhd:
+  #   pre_prompt: ""
+  #   post_prompt: " Answer:"
+  xcomposer2_4khd:
+    pre_prompt: "[UNUSED_TOKEN_146]user\n"
+    post_prompt: " Answer this question with A, B, C, or D.[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\n"
+
+metadata:
+  - version: 0.0
