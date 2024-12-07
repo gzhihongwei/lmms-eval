@@ -43,16 +43,17 @@ this would require more changes to the code, but shouldn't be a super big deal.
 The hackiest thing I did so far was copy the exact columns of VideoMME, namely
 
 ```
-video_id: (str) Unique identifier as formatted int
+video_id: (str) Unique identifier as formatted int (e.g. "001")
 duration: (str) "short"
-domain: (str) Just copy first one for now
+domain: (str) {"Social Situations", "Sentiments", "Egocentric Agents", "Information Querying", "Sports", "Gaming", "Shopping"}
 sub_category: (str) Just copy first one for now
-videoID: (str) Unique identifier to video
-question_id: (str) Just copy first one for now
+videoID: (str) Unique identifier to video (i.e. filename)
+question_id: (str) f"{video_id}_{qnum}-{i}" for i in {1, 2, 3} (qnum is if you have multiple different queries with different answers for the same video)
 task_type: (str) Just copy first one for now
 question: (str) the question being asked
-options: (List[str]) list of multiple choice answers ["A. ...", "B. ...", "C. ...", "D. ..."]
-answer: (str) {A, B, C, D}
+options: (List[str]) list of multiple choice answers ["A. ...", "B. ...", "C. ...", "D. ...", ...] or "None" for `question_id`s ending in `-2` or `-3`
+answer: (str) {A, B, C, D, ...} or open-ended answer
+difficulty: {"easy", "medium", "hard"}
 ```
 
 We need to create more splits by creating additional .jsonl files, probably
@@ -65,17 +66,14 @@ test_medium.jsonl
 
 We'll need to make some modifications so that we can also allow for open-ended generation, possibly with the following changes
 
-```
-answer -> option_answer
-+ answer (open-ended)
-```
+- `question_id`s ending in `-2` or `-3` is to change `options` to `None` and `answer` to an open-ended response.
 
 # TODOs:
 
-- [ ] Add more examples
+- [ ] Add more examples (in progress)
 - [ ] Update the VIDEO_TYPE, CATEGORIES, SUB_CATEGORIES, and TASK_CATEGORIES
-- [ ] Figure out how to update `mmug_doc_to_text` and `mmug_doc_to_text_subtitle` to support open-ended generation
-- [ ] Implement GPT as a Judge
-- [ ] Add `mmug_gpt_score` to `mmug_process_results`
+- [ ] Figure out how to update `mmug_doc_to_text` and `mmug_doc_to_text_subtitle` to support open-ended generation (in progress)
+- [x] Implement GPT as a Judge
+- [x] Add `mmug_gpt_score` to `mmug_process_results`
 - [ ] Update `mmug_multiple_choice_results` so that it is more fine-grained
-- [ ] Implement `mmug_gpt_score_results` 
+- [x] Implement `mmug_gpt_score_results`

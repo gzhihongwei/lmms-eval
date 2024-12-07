@@ -1,14 +1,15 @@
-dataset_path: gzwei/MMUG
+dataset_path: CUBE-CMU/MMUG
 dataset_kwargs:
   token: True
   cache_dir: mmug
   video: True
+  force_unzip: True
 output_type: generate_until
 doc_to_visual: !function utils.mmug_doc_to_visual
 doc_to_text: !function utils.mmug_doc_to_text
 doc_to_target: "answer"
 generation_kwargs:
-  max_new_tokens: 16 # Might need to increase this if we want to evaluate generation
+  max_new_tokens: 64 # Might need to increase this if we want to evaluate generation
   temperature: 0
   top_p: 1.0
   num_beams: 1
@@ -20,30 +21,34 @@ metric_list:
   - metric: mmug_perception_score
     aggregation: !function utils.mmug_multiple_choice_results
     higher_is_better: true
-  - metric: mmug_gpt_score
+  - metric: mmug_gpt_eval_score_correctness
+    aggregation: !function utils.mmug_aggregate_score
+    higher_is_better: true
+  - metric: mmug_gpt_eval_score_detailed_orientation
+    aggregation: !function utils.mmug_aggregate_score
+    higher_is_better: true
+  - metric: mmug_gpt_eval_score_context
+    aggregation: !function utils.mmug_aggregate_score
+    higher_is_better: true
+  - metric: mmug_gpt_eval_score_consistency
     aggregation: !function utils.mmug_gpt_score_results
     higher_is_better: true
 
 lmms_eval_specific_kwargs:
-  # TODO: modify these
+  # TODO: modify these split on $ to have different pre_prompt and post_prompt depending on multiple choice or open generation
   default:
     pre_prompt: ""
-    post_prompt: "\nAnswer with the option's letter from the given choices directly."
+    post_prompt: "\nAnswer with the option's letter from the given choices directly.$"
   gpt4v:
-    pre_prompt: ""
-    post_prompt: "Answer the question with A, B, C, or D."
+    # pre_prompt: "" # TODO: see if this inherits default.pre_prompt
+    post_prompt: "Answer the question with A, B, C, or D.$"
   llava_vid:
-    pre_prompt: ""
-    post_prompt: "The best answer is:"
-  # qwen_vl:  
+    # pre_prompt: ""
+    post_prompt: " The best answer is:$"
+  # qwen2_vl:  
   #   pre_prompt: ""
   #   post_prompt: " Answer:"
-  # otterhd:
-  #   pre_prompt: ""
-  #   post_prompt: " Answer:"
-  xcomposer2_4khd:
-    pre_prompt: "[UNUSED_TOKEN_146]user\n"
-    post_prompt: " Answer this question with A, B, C, or D.[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\n"
 
 metadata:
-  - version: 0.0
+  version: 0.0
+  gpt_eval_model_name: gpt-4o-mini-2024-07-18
