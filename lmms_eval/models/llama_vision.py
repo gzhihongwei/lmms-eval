@@ -15,7 +15,6 @@ from lmms_eval import utils
 from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
-from lmms_eval.models.model_utils.load_video import read_video_pyav_pil
 
 warnings.filterwarnings("ignore")
 
@@ -33,12 +32,10 @@ class LlamaVision(lmms):
         device: str = "cuda",
         dtype: Optional[Union[str, torch.dtype]] = "auto",
         batch_size: int = 1,
-        trust_remote_code: Optional[bool] = True,
+        trust_remote_code: Optional[bool] = False,
         attn_implementation: Optional[str] = None,
         device_map: str = "",
         max_frames_num: Optional[int] = 32,
-        fps: Optional[int] = None,
-        max_image_size: Optional[int] = None,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -55,9 +52,7 @@ class LlamaVision(lmms):
         if isinstance(dtype, str) and dtype != "auto":
             dtype = getattr(torch, dtype)
 
-        self.fps = fps
         self.max_frames_num = max_frames_num
-        self.max_image_size = max_image_size
         self._model = MllamaForConditionalGeneration.from_pretrained(pretrained, revision=revision, torch_dtype=dtype, device_map=self.device_map, trust_remote_code=trust_remote_code, attn_implementation=attn_implementation)
         self.model.eval()
         self.processor = AutoProcessor.from_pretrained(pretrained)
@@ -182,11 +177,9 @@ class LlamaVision(lmms):
 
             for visual in visuals:
                 if isinstance(visual, str):
-                    frames = read_video_pyav_pil(visual, num_frm=self.max_frames_num, fps=self.fps, max_image_size=self.max_image_size)
-                    images.extend(frames)
-                    # frames = self.load_video(visual, self.max_frames_num)
-                    # frames = torch.from_numpy(frames).permute(0, 3, 1, 2)
-                    # images.extend([to_pil_image(frame) for frame in frames])
+                    frames = self.load_video(visual, self.max_frames_num)
+                    frames = torch.from_numpy(frames).permute(0, 3, 1, 2)
+                    images.extend([to_pil_image(frame) for frame in frames])
                 elif isinstance(visual, PIL.Image.Image):
                     images.append(visual)
 
@@ -194,7 +187,7 @@ class LlamaVision(lmms):
                 messages[-1]["content"].append({"type": "image"})
             messages[-1]["content"].append({"type": "text", "text": contexts})
             prompt = self.processor.apply_chat_template(messages, add_generation_prompt=True)
-            inputs = self.processor(images, prompt, return_tensors="pt").to(self.model.device)
+            inputs = self.processor(images, prompt, add_special_tokens=False, return_tensors="pt").to(self.model.device)
 
             if "max_new_tokens" not in gen_kwargs:
                 gen_kwargs["max_new_tokens"] = 1024
@@ -215,7 +208,7 @@ class LlamaVision(lmms):
                     do_sample=gen_kwargs["do_sample"],
                 )
                 output = output[:, inputs["input_ids"].shape[-1] :]
-                res.append(self.processor.decode(output[0]))
+                res.append(self.processor.decode(output[0], skip_special_tokens=True))
 
             pbar.update(1)
         pbar.close()
