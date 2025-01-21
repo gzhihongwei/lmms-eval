@@ -89,6 +89,9 @@ metrics = [
     "capture_metric",
     "Levenshtein",
 ]
+nova = [
+    "boto3"
+]
 gemini = [
     "google-generativeai",
 ]

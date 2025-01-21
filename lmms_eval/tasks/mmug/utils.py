@@ -816,6 +816,6 @@ def mmug_aggregate_score(results, args):
         total_score += result_dict["score"]
         num_scores += 1
 
-    average_score = total_score / num_scores if results else 0
+    average_score = total_score / num_scores if num_scores > 0 else 0
     eval_logger.info(f"Average Score: {average_score}")
     return average_score
