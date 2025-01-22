@@ -144,7 +144,7 @@ def mmug_doc_to_visual(doc):
     cache_dir = os.path.join(base_cache_dir, cache_name)
     video_path = doc["videoID"] + ".mp4"
     video_path = os.path.join(cache_dir, 
-                            #   "data", # TODO: need to eventually re-add this back
+                              "vid", # TODO: need to eventually re-add this back
                               video_path)
     if os.path.exists(video_path):
         video_path = video_path
@@ -159,7 +159,7 @@ def mmug_doc_to_visual(doc):
 
 
 def mmug_doc_to_text(doc, lmms_eval_specific_kwargs=None):
-    post_prompts = (lmms_eval_specific_kwargs or {}).get("post_prompt", None).split("$")
+    post_prompts = (lmms_eval_specific_kwargs or {}).get("post_prompt", "$").split("$")
     question = doc["question"]
     
     if doc["question_id"].endswith("-1"):
@@ -190,29 +190,23 @@ def mmug_doc_to_text(doc, lmms_eval_specific_kwargs=None):
 
 
 def mmug_doc_to_text_subtitle(doc, lmms_eval_specific_kwargs=None):
-    # TODO: update so more similar to above
     cache_dir = os.path.join(base_cache_dir, cache_name)
-    video_path = doc["videoID"] + ".mp4"
-    video_path = os.path.join(cache_dir, "data", video_path)
+    video_path = os.path.join(cache_dir, "vid", doc["videoID"] + ".mp4")
     subtitle_path = os.path.join(cache_dir, "subtitle", doc["videoID"] + ".srt")
-    video_path = os.path.join(cache_dir, video_path)
     if os.path.exists(subtitle_path):  # Denote have subtitle
-        subtitle = open(subtitle_path).readlines()
+        subtitle = open(subtitle_path).read().splitlines()
     else:
         subtitle = ""
     subtitles_prompt = "This video's subtitles are listed below:\n"
-    if subtitle == "":
+    if not subtitle:
         subtitle = "No subtitles available"
     else:
-        if "gemini_api_flag" in lmms_eval_specific_kwargs:  # specific for gemini_api
-            if lmms_eval_specific_kwargs["gemini_api_flag"] == "full subtitle":
-                textlist = []
-                for ele in subtitle:
-                    pattern = r'<font color="white" size=".72c">(.*?)</font>'
-                    matches = re.findall(pattern, ele)
-                    if matches:
-                        textlist.append(matches[0])
-                subtitle_text = "\n".join(textlist)
+        if "all_subtitles" in lmms_eval_specific_kwargs:  # api models
+            # Filter empty strings out
+            subtitle = list(filter(len, subtitle))
+            textlist = subtitle[2::3]
+            
+            subtitle_text = "\n".join(textlist)
         else:
             if "frame_num" in lmms_eval_specific_kwargs:
                 frame_num = lmms_eval_specific_kwargs["frame_num"]
@@ -230,21 +224,25 @@ def mmug_doc_to_text_subtitle(doc, lmms_eval_specific_kwargs=None):
 
                 textlist = []
                 for idx in subtitle_by_frame_idx:
-                    pattern = r'<font color="white" size=".72c">(.*?)</font>'
-                    raw_text = re.findall(pattern, subtitle_by_frame[idx][2])
-                    try:
-                        textlist.append(raw_text[0])
-                    except:
-                        continue
+                    textlist.append(subtitle_by_frame[idx][2])
                 subtitle_text = "\n".join(textlist)
         subtitle = subtitle_text
-
-    option_prompt = "Select the best answer to the following multiple-choice question based on the video and the subtitles. Respond with only the letter (A, B, C, D, E, F, G, or H) of the correct option."
+        
+    post_prompts = (lmms_eval_specific_kwargs or {}).get("post_prompt", "$").split("$")
     question = doc["question"]
-    options = "\n".join(doc["options"])
-    question = question + "\n" + options
-    full_prompt = subtitles_prompt + subtitle + "\n" + option_prompt + "\n" + question + "\n" + "The best answer is:"
-    return full_prompt
+        
+    if doc["question_id"].endswith("-1"):
+        option_prompt = "Select the best answer to the following multiple-choice question based on the video and the subtitles. Respond with only the letter (A, B, C, D, E, F, G, or H) of the correct option."
+        options = "\n".join(doc["options"])
+        question = question + "\n" + options
+        post_prompt = post_prompts[0] or " The best answer is:"
+        full_prompt = subtitles_prompt + subtitle + "\n" + option_prompt + "\n" + question + "\n" + post_prompt
+        return full_prompt
+    
+    # TODO: fine tune these pre and post prompts
+    pre_prompt = (lmms_eval_specific_kwargs or {}).get("pre_prompt", "")
+    post_prompt = post_prompts[1] or " The answer is:"
+    return f"{subtitles_prompt}{subtitle}\n{pre_prompt}{question}{post_prompt}"
 
 
 def get_eval_generic(question, answer, pred, task, max_tokens: int, retries: int = 5):
