@@ -58,7 +58,7 @@ class Qwen2_Audio(lmms):
         self._model = Qwen2AudioForConditionalGeneration.from_pretrained(
             pretrained,
             torch_dtype="auto",
-            device_map=device_map,
+            device_map=self.device_map,
         ).eval()
 
         self.processor = AutoProcessor.from_pretrained(pretrained)
@@ -224,6 +224,7 @@ class Qwen2_Audio(lmms):
                 text = [self.processor.apply_chat_template(conversation, add_generation_prompt=self.add_generation_prompt, tokenize=False) for conversation in conversations]
             else:
                 text = ["<|audio_bos|><|AUDIO|><|audio_eos|>" + context for context in contexts]
+            import pdb; pdb.set_trace()
             audios = [downsample_audio(audio["array"], audio["sampling_rate"], self.processor.feature_extractor.sampling_rate) for audio in flattened_audios]
 
             inputs = self.processor(text=text, audios=audios, return_tensors="pt", padding=True, sampling_rate=self.processor.feature_extractor.sampling_rate)

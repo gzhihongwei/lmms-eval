@@ -16,6 +16,7 @@ from loguru import logger as eval_logger
 from openai import OpenAI
 from PIL import Image
 from tqdm import tqdm
+from typing import List, Tuple
 
 # Local application/library specific imports
 from lmms_eval.api.instance import Instance

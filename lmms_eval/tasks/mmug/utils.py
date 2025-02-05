@@ -244,6 +244,29 @@ def mmug_doc_to_text_subtitle(doc, lmms_eval_specific_kwargs=None):
     post_prompt = post_prompts[1] or " The answer is:"
     return f"{subtitles_prompt}{subtitle}\n{pre_prompt}{question}{post_prompt}"
 
+def mmug_doc_to_text_wo_subtitle(doc, lmms_eval_specific_kwargs=None):
+    cache_dir = os.path.join(base_cache_dir, cache_name)
+    video_path = os.path.join(cache_dir, "vid", doc["videoID"] + ".mp4")
+    subtitle_path = os.path.join(cache_dir, "subtitle", doc["videoID"] + ".srt")
+    subtitle = ""
+    subtitles_prompt = "This video's subtitles are listed below:\n"
+        
+    post_prompts = (lmms_eval_specific_kwargs or {}).get("post_prompt", "$").split("$")
+    question = doc["question"]
+        
+    if doc["question_id"].endswith("-1"):
+        option_prompt = "Select the best answer to the following multiple-choice question based on the video and the subtitles. Respond with only the letter (A, B, C, D, E, F, G, or H) of the correct option."
+        options = "\n".join(doc["options"])
+        question = question + "\n" + options
+        post_prompt = post_prompts[0] or " The best answer is:"
+        full_prompt = subtitles_prompt + subtitle + "\n" + option_prompt + "\n" + question + "\n" + post_prompt
+        return full_prompt
+    
+    # TODO: fine tune these pre and post prompts
+    pre_prompt = (lmms_eval_specific_kwargs or {}).get("pre_prompt", "")
+    post_prompt = post_prompts[1] or " The answer is:"
+    return f"{subtitles_prompt}{subtitle}\n{pre_prompt}{question}{post_prompt}"
+
 
 def get_eval_generic(question, answer, pred, task, max_tokens: int, retries: int = 5):
     global headers

@@ -117,7 +117,7 @@ class NovaAPI(lmms):
                 "inferenceConfig": inference_config
             }
 
-            for attempt in range(5):
+            for attempt in range(1):
                 try:
                     response = self.model(body=json.dumps(native_request))
                     model_response = json.loads(response["body"].read())
@@ -138,7 +138,7 @@ class NovaAPI(lmms):
                     if attempt < 5 - 1:  # If we have retries left, sleep and then continue to next attempt
                         time.sleep(NUM_SECONDS_TO_SLEEP)
                     else:  # If this was the last attempt, log and return empty
-                        eval_logger.error(f"All 5 attempts failed. Last error message: {str(e)}")
+                        eval_logger.error(f"All 1 attempts failed. Last error message: {str(e)}")
                         content = ""
             res.append(content)
             pbar.update(1)

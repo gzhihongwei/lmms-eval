@@ -9,3 +9,9 @@ lmms_eval_specific_kwargs:
   nova_api:
     all_subtitles: True
     # post_prompt: "\nAnswer with the option's letter from the given choices directly.$"
+  gpt4v:
+    all_subtitles: True
+
+  qwen2_audio:
+    all_subtitles: True
+

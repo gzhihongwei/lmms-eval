@@ -46,7 +46,7 @@ elif API_TYPE == "azure":
 class GPT4V(lmms):
     def __init__(
         self,
-        model_version: str = "gpt-4-vision-preview",
+        model_version: str = "gpt-4o",
         modality: str = "video",
         max_frames_num: int = 10,
         timeout: int = 120,
@@ -106,7 +106,7 @@ class GPT4V(lmms):
 
     # Function to encode the video
     def encode_video(self, video_path, for_get_frames_num):
-        vr = VideoReader(video_path, ctx=cpu(0))
+        vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
         total_frame_num = len(vr)
         uniform_sampled_frames = np.linspace(0, total_frame_num - 1, for_get_frames_num, dtype=int)
 
