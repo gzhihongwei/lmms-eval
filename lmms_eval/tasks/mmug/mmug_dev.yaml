@@ -44,4 +44,4 @@ lmms_eval_specific_kwargs:
 
 # accelerate launch --multi_gpu --num_processes 2 --gpu_ids 3,4 -m lmms_eval --model qwen2_vl --model_args pretrained="Qwen/Qwen2-VL-2B-Instruct",device_map=auto,max_pixels=200704 --tasks mmug --batch_size 1 --log_samples --log_samples_suffix llava_vid_32B --output_path ./logs/
 
-# accelerate launch --multi_gpu --num_processes 2 --gpu_ids 3,4 -m lmms_eval --model qwen2_5_vl --model_args device_map=auto,max_pixels=200704 --tasks mmug --batch_size 1 --log_samples --log_samples_suffix qwen25 --output_path ./logs/
+# accelerate launch --multi_gpu --num_processes 2 --gpu_ids 0,1 -m lmms_eval --model qwen2_5_vl --model_args device_map=auto,max_pixels=200704 --tasks mmug --batch_size 1 --log_samples --log_samples_suffix qwen25 --output_path ./logs/

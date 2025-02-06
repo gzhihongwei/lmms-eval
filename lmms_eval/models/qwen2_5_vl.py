@@ -202,8 +202,12 @@ class Qwen2_5_VL(lmms):
                 if len(visuals) > 0:
                     visual = visuals[i] if i < len(visuals) else None
                     if isinstance(visual, str) and visual.endswith((".mp4", ".avi", ".mov")):  # Video file
-                        vr = decord.VideoReader(visual)
-                        first_frame = vr[0].asnumpy()
+                        try:
+                            vr = decord.VideoReader(visual)
+                            first_frame = vr[0].asnumpy()
+
+                        except:
+                            continue
                         height, width = first_frame.shape[:2]
                         # max_pixels = height * width
                         message.append({"role": "user", "content": [{"type": "video", "video": visual, "max_pixels": self.max_pixels}, {"type": "text", "text": context}]})
