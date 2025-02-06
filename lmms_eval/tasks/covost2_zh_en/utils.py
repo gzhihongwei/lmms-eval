@@ -3,6 +3,7 @@ import re
 import unicodedata
 
 import editdistance as ed  # TODO: new package
+from sacrebleu import corpus_bleu
 
 from lmms_eval.tasks.gigaspeech.whisper_normalizer.basic import BasicTextNormalizer
 from lmms_eval.tasks.gigaspeech.whisper_normalizer.english import EnglishTextNormalizer
@@ -14,42 +15,23 @@ basic_normalizer = BasicTextNormalizer()
 
 dir_name = os.path.dirname(os.path.abspath(__file__))
 
-SPECIAL_TOKENS = {
-    "<COMMA>": ",",
-    "<PERIOD>": ".",
-    "<QUESTION>": "?",
-    "<EXCLAMATION>": "!",
-}
 
-
-def gigaspeech_doc_to_audio(doc):
+def covost2_doc_to_audio(doc):
     return [doc["audio"]]
 
 
-def gigaspeech_doc_to_text(doc, lmms_eval_specific_kwargs):
+def covost2_doc_to_text(doc, lmms_eval_specific_kwargs):
     pre_prompt = lmms_eval_specific_kwargs["pre_prompt"]
     post_prompt = lmms_eval_specific_kwargs["post_prompt"]
-    return f"{pre_prompt}Please recognize the speech and only output the recognized content:{post_prompt}"
+    return f"{pre_prompt}{post_prompt}"
 
 
-def gigaspeech_process_result(doc, result):
+def covost2_process_result(doc, result):
     pred = result[0] if len(result) > 0 else ""
     gt = doc["gt"]
-    for token, replaced in SPECIAL_TOKENS.items():
-        gt = gt.replace(token, replaced)
     data_dict = {"gt": gt, "pred": pred}
 
-    return {"wer": data_dict}
-
-
-def gigaspeech_xl_process_result(doc, result):
-    pred = result[0] if len(result) > 0 else ""
-    gt = doc["text"]
-    for token, replaced in SPECIAL_TOKENS.items():
-        gt = gt.replace(token, replaced)
-    data_dict = {"gt": gt, "pred": pred}
-
-    return {"wer": data_dict}
+    return {"bleu": data_dict}
 
 
 PUNCS = "!,.?;:"
@@ -133,33 +115,22 @@ class EvaluationTokenizer(object):
         return tokenized
 
 
-def compute_wer(refs, hyps):
-    distance = 0
-    ref_length = 0
+def compute_bleu(refs, hyps):
     tokenizer = EvaluationTokenizer(
         tokenizer_type="none",
         lowercase=True,
         punctuation_removal=True,
         character_tokenization=False,
     )
-    for i in range(len(refs)):
-        ref = refs[i]
-        pred = hyps[i]
-        ref = english_normalizer(ref)
-        pred = english_normalizer(pred)
-        ref_items = tokenizer.tokenize(ref).split()
-        pred_items = tokenizer.tokenize(pred).split()
-        if i == 0:
-            print(f"ref: {ref}")
-            print(f"pred: {pred}")
-            print(f"ref_items:\n{ref_items}\n{len(ref_items)}\n{ref_items[0]}")
-            print(f"pred_items:\n{pred_items}\n{len(ref_items)}\n{ref_items[0]}")
-        distance += ed.eval(ref_items, pred_items)
-        ref_length += len(ref_items)
-    return distance / ref_length
+    refs = [tokenizer.tokenize(english_normalizer(ref)) for ref in refs]
+    hyps = [tokenizer.tokenize(english_normalizer(hyp)) for hyp in hyps]
+    # print(f"refs: {refs[0]}")
+    # print(f"pred: {hyps[0]}")
+    bleu_score = corpus_bleu(hyps, [refs], tokenize="13a")
+    return bleu_score.score
 
 
-def gigaspeech_wer(results, args):
+def covost2_bleu(results, args):
     refs, hyps = [], []
     for result in results:
         gt = result["gt"]
@@ -168,6 +139,6 @@ def gigaspeech_wer(results, args):
         response = remove_sp(response)
         refs.append(gt)
         hyps.append(response)
-    wer = compute_wer(refs, hyps)
+    bleu = compute_bleu(refs, hyps)
     # print(f"source: {source}  cnt: {len(refs)} wer: {wer:.4f}")
-    return wer * 100
+    return round(bleu, 5)

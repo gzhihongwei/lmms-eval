@@ -1,6 +1,7 @@
 import os
 import re
 import unicodedata
+from collections import OrderedDict
 
 import editdistance as ed
 import zhconv
@@ -8,6 +9,114 @@ import zhconv
 from lmms_eval.tasks.librispeech.cn_tn import TextNorm
 from lmms_eval.tasks.librispeech.whisper_normalizer.basic import BasicTextNormalizer
 from lmms_eval.tasks.librispeech.whisper_normalizer.english import EnglishTextNormalizer
+
+_FLEURS_LANG_TO_ID = OrderedDict(
+    [
+        ("Afrikaans", "af"),
+        ("Amharic", "am"),
+        ("Arabic", "ar"),
+        ("Armenian", "hy"),
+        ("Assamese", "as"),
+        ("Asturian", "ast"),
+        ("Azerbaijani", "az"),
+        ("Belarusian", "be"),
+        ("Bengali", "bn"),
+        ("Bosnian", "bs"),
+        ("Bulgarian", "bg"),
+        ("Burmese", "my"),
+        ("Catalan", "ca"),
+        ("Cebuano", "ceb"),
+        ("Mandarin Chinese", "cmn_hans"),
+        ("Cantonese Chinese", "yue_hant"),
+        ("Croatian", "hr"),
+        ("Czech", "cs"),
+        ("Danish", "da"),
+        ("Dutch", "nl"),
+        ("English", "en"),
+        ("Estonian", "et"),
+        ("Filipino", "fil"),
+        ("Finnish", "fi"),
+        ("French", "fr"),
+        ("Fula", "ff"),
+        ("Galician", "gl"),
+        ("Ganda", "lg"),
+        ("Georgian", "ka"),
+        ("German", "de"),
+        ("Greek", "el"),
+        ("Gujarati", "gu"),
+        ("Hausa", "ha"),
+        ("Hebrew", "he"),
+        ("Hindi", "hi"),
+        ("Hungarian", "hu"),
+        ("Icelandic", "is"),
+        ("Igbo", "ig"),
+        ("Indonesian", "id"),
+        ("Irish", "ga"),
+        ("Italian", "it"),
+        ("Japanese", "ja"),
+        ("Javanese", "jv"),
+        ("Kabuverdianu", "kea"),
+        ("Kamba", "kam"),
+        ("Kannada", "kn"),
+        ("Kazakh", "kk"),
+        ("Khmer", "km"),
+        ("Korean", "ko"),
+        ("Kyrgyz", "ky"),
+        ("Lao", "lo"),
+        ("Latvian", "lv"),
+        ("Lingala", "ln"),
+        ("Lithuanian", "lt"),
+        ("Luo", "luo"),
+        ("Luxembourgish", "lb"),
+        ("Macedonian", "mk"),
+        ("Malay", "ms"),
+        ("Malayalam", "ml"),
+        ("Maltese", "mt"),
+        ("Maori", "mi"),
+        ("Marathi", "mr"),
+        ("Mongolian", "mn"),
+        ("Nepali", "ne"),
+        ("Northern-Sotho", "nso"),
+        ("Norwegian", "nb"),
+        ("Nyanja", "ny"),
+        ("Occitan", "oc"),
+        ("Oriya", "or"),
+        ("Oromo", "om"),
+        ("Pashto", "ps"),
+        ("Persian", "fa"),
+        ("Polish", "pl"),
+        ("Portuguese", "pt"),
+        ("Punjabi", "pa"),
+        ("Romanian", "ro"),
+        ("Russian", "ru"),
+        ("Serbian", "sr"),
+        ("Shona", "sn"),
+        ("Sindhi", "sd"),
+        ("Slovak", "sk"),
+        ("Slovenian", "sl"),
+        ("Somali", "so"),
+        ("Sorani-Kurdish", "ckb"),
+        ("Spanish", "es"),
+        ("Swahili", "sw"),
+        ("Swedish", "sv"),
+        ("Tajik", "tg"),
+        ("Tamil", "ta"),
+        ("Telugu", "te"),
+        ("Thai", "th"),
+        ("Turkish", "tr"),
+        ("Ukrainian", "uk"),
+        ("Umbundu", "umb"),
+        ("Urdu", "ur"),
+        ("Uzbek", "uz"),
+        ("Vietnamese", "vi"),
+        ("Welsh", "cy"),
+        ("Wolof", "wo"),
+        ("Xhosa", "xh"),
+        ("Yoruba", "yo"),
+        ("Zulu", "zu"),
+    ]
+)
+_FLEURS_LANG_SHORT_TO_LONG = {v: k for k, v in _FLEURS_LANG_TO_ID.items()}
 
 # ImportError: To support decoding audio files, please install 'librosa' and 'soundfile'.
 english_normalizer = EnglishTextNormalizer()
@@ -26,24 +135,24 @@ basic_normalizer = BasicTextNormalizer()
 dir_name = os.path.dirname(os.path.abspath(__file__))
 
 
-def common_voice_15_doc_to_audio(doc):
+def fleurs_doc_to_audio(doc):
     return [doc["audio"]]
 
 
-def common_voice_15_doc_to_text(doc, lmms_eval_specific_kwargs):
+def fleurs_doc_to_text(doc, lmms_eval_specific_kwargs):
     pre_prompt = lmms_eval_specific_kwargs["pre_prompt"]
     post_prompt = lmms_eval_specific_kwargs["post_prompt"]
     return f"{pre_prompt}Please recognize the speech and only output the recognized content:{post_prompt}"
 
 
-def common_voice_15_process_result(doc, result):
+def fleurs_process_result(doc, result):
     pred = result[0] if len(result) > 0 else ""
 
-    gt = doc["sentence"]
+    gt = doc["transcription"]
     source = doc["path"]
-    task = doc["locale"]
+    language = doc["language"]
 
-    data_dict = {"gt": gt, "pred": pred, "source": source, "task": task}
+    data_dict = {"gt": gt, "pred": pred, "source": source, "language": language}
 
     return {"wer": data_dict}
 
@@ -56,7 +165,7 @@ def remove_sp(text, language):
     gt = re.sub(rf"\s+", r" ", gt)  # Replace consecutive spaces in the text with a single space.
     gt = re.sub(f" ?([{PUNCS}])", r"\1", gt)
     gt = gt.lstrip(" ")
-    if language == "zh-CN":
+    if language == "cmn_hans":
         gt = re.sub(rf"\s+", r"", gt)
     return gt
 
@@ -141,13 +250,13 @@ def compute_wer(refs, hyps, language):
     for i in range(len(refs)):
         ref = refs[i]
         pred = hyps[i]
-        if language in ["yue"]:
+        if language in ["yue_hant"]:
             ref = zhconv.convert(ref, "zh-cn")
             pred = zhconv.convert(pred, "zh-cn")
         if language in ["en"]:
             ref = english_normalizer(ref)
             pred = english_normalizer(pred)
-        if language in ["zh-CN"]:
+        if language in ["cmn_hans"]:
             ref = chinese_normalizer(ref)
             pred = chinese_normalizer(pred)
         else:
@@ -155,7 +264,7 @@ def compute_wer(refs, hyps, language):
             pred = basic_normalizer(pred)
         ref_items = tokenizer.tokenize(ref).split()
         pred_items = tokenizer.tokenize(pred).split()
-        if language in ["zh-CN", "yue"]:
+        if language in ["zh", "yue"]:
             ref_items = [x for x in "".join(ref_items)]
             pred_items = [x for x in "".join(pred_items)]
         if i == 0:
@@ -168,10 +277,10 @@ def compute_wer(refs, hyps, language):
     return distance / ref_length
 
 
-def common_voice_15_wer(results, args):
+def fleurs_wer(results, args):
     refs, hyps = [], []
     for result in results:
-        lan = result["task"]
+        lan = _FLEURS_LANG_TO_ID[result["language"]]
         gt = result["gt"]
         response = result["pred"]
         gt = remove_sp(gt, lan)
