@@ -56,7 +56,8 @@ AVAILABLE_MODELS = {
     "llama_vision": "LlamaVision",
     "aria": "Aria",
     "ross": "Ross",
-    "nova_api": "NovaAPI"
+    "nova_api": "NovaAPI",
+    "qwen2_5_vl": "Qwen2_5_VL",
 }
 
 
