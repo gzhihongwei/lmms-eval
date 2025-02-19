@@ -607,71 +607,76 @@ def mmug_multiple_choice_results(results, args):
 
     eval_logger.info(f"Overall Performance: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
     return 100 * total_correct / total_answered if total_answered > 0 else 0
-    
-    ## Reference from VideoMME
-    # category2score = {}
 
-    # for video_type in VIDEO_TYPE:
-    #     for category in CATEGORIES:
-    #         for sub_category in SUB_CATEGORIES:
-    #             for task_category in TASK_CATEGORIES:
-    #                 key = f"{video_type}_{category}_{sub_category}_{task_category}"
-    #                 category2score[key] = {"correct": 0, "answered": 0}
 
-    # for result in results:
-    #     video_type = result["duration"]
-    #     category = result["category"]
-    #     sub_category = result["sub_category"]
-    #     task_category = result["task_category"]
-    #     key = f"{video_type}_{category}_{sub_category}_{task_category}"
-    #     category2score[key]["answered"] += 1
-    #     category2score[key]["correct"] += result["pred_answer"] == result["answer"]
+def mmug_aggregate_results(results):
+    """
+    Args:
+        results: a list of values returned by process_results
+    Returns:
+        A score
+    """
+    category2score = {}
 
-    # for video_type in VIDEO_TYPE:
-    #     total_correct = 0
-    #     total_answered = 0
-    #     for k, v in category2score.items():
-    #         if video_type in k:
-    #             total_correct += v["correct"]
-    #             total_answered += v["answered"]
-    #     eval_logger.info(f"Evaluation on video Type: {video_type}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
+    for video_type in VIDEO_TYPE:
+        for category in CATEGORIES:
+            for sub_category in SUB_CATEGORIES:
+                for task_category in TASK_CATEGORIES:
+                    key = f"{video_type}_{category}_{sub_category}_{task_category}"
+                    category2score[key] = {"correct": 0, "answered": 0}
 
-    # for category in CATEGORIES:
-    #     total_correct = 0
-    #     total_answered = 0
-    #     for k, v in category2score.items():
-    #         if category in k:
-    #             total_correct += v["correct"]
-    #             total_answered += v["answered"]
-    #     eval_logger.info(f"Evaluation on Categories: {category}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
+    for result in results:
+        video_type = result["duration"]
+        category = result["category"]
+        sub_category = result["sub_category"]
+        task_category = result["task_category"]
+        key = f"{video_type}_{category}_{sub_category}_{task_category}"
+        category2score[key]["answered"] += 1
+        category2score[key]["correct"] += result["pred_answer"] == result["answer"]
 
-    # for sub_cate in SUB_CATEGORIES:
-    #     total_correct = 0
-    #     total_answered = 0
-    #     for k, v in category2score.items():
-    #         if sub_cate in k:
-    #             total_correct += v["correct"]
-    #             total_answered += v["answered"]
-    #     eval_logger.info(f"Evaluation on Video Sub Categories: {sub_cate}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
+    for video_type in VIDEO_TYPE:
+        total_correct = 0
+        total_answered = 0
+        for k, v in category2score.items():
+            if video_type in k:
+                total_correct += v["correct"]
+                total_answered += v["answered"]
+        eval_logger.info(f"Evaluation on video Type: {video_type}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
 
-    # for task_cate in TASK_CATEGORIES:
-    #     total_correct = 0
-    #     total_answered = 0
-    #     for k, v in category2score.items():
-    #         if task_cate in k:
-    #             total_correct += v["correct"]
-    #             total_answered += v["answered"]
-    #     eval_logger.info(f"Evaluation on Task Categories: {task_cate}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
+    for category in CATEGORIES:
+        total_correct = 0
+        total_answered = 0
+        for k, v in category2score.items():
+            if category in k:
+                total_correct += v["correct"]
+                total_answered += v["answered"]
+        eval_logger.info(f"Evaluation on Categories: {category}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
 
-    # total_correct = 0
-    # total_answered = 0
-    # for k, v in category2score.items():
-    #     total_correct += v["correct"]
-    #     total_answered += v["answered"]
-    # eval_logger.info(f"Overall Performance: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
-    # return 100 * total_correct / total_answered if total_answered > 0 else 0
-    
-    
+    for sub_cate in SUB_CATEGORIES:
+        total_correct = 0
+        total_answered = 0
+        for k, v in category2score.items():
+            if sub_cate in k:
+                total_correct += v["correct"]
+                total_answered += v["answered"]
+        eval_logger.info(f"Evaluation on Video Sub Categories: {sub_cate}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
+
+    for task_cate in TASK_CATEGORIES:
+        total_correct = 0
+        total_answered = 0
+        for k, v in category2score.items():
+            if task_cate in k:
+                total_correct += v["correct"]
+                total_answered += v["answered"]
+        eval_logger.info(f"Evaluation on Task Categories: {task_cate}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
+
+    total_correct = 0
+    total_answered = 0
+    for k, v in category2score.items():
+        total_correct += v["correct"]
+        total_answered += v["answered"]
+    eval_logger.info(f"Overall Performance: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
+    return 100 * total_correct / total_answered if total_answered > 0 else 0
 
     
     
