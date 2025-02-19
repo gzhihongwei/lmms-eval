@@ -37,34 +37,6 @@ from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
 from lmms_eval.models.model_utils.load_video import read_video_pyav
 
-# try:
-#     from llavavid.model.builder import load_pretrained_model
-#     from llavavid.mm_utils import tokenizer_image_token, get_model_name_from_path, KeywordsStoppingCriteria
-#     from llavavid.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, IGNORE_INDEX
-#     from llavavid.conversation import conv_templates, SeparatorStyle
-#     from llavavid.mm_utils import tokenizer_image_token_qwen_merge, preprocess_qwen, preprocess_llama3
-# except ImportError:
-#     import llava
-#     import pdb;pdb.set_trace()
-#     if "llava-video-old" in llava.__file__:
-#         from llava.model.language_model.llava_llama import LlavaConfig
-#         from llava.model.language_model.llava_qwen import LlavaQwenConfig
-#         from llava.model.builder import load_pretrained_model
-#         from llava.mm_utils import tokenizer_image_token, get_model_name_from_path, KeywordsStoppingCriteria
-#         from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, IGNORE_INDEX
-#         from llava.conversation import conv_templates, SeparatorStyle
-
-#         AutoConfig.register("llava_llama", LlavaConfig)
-#         AutoConfig.register("llava_qwen", LlavaQwenConfig)
-#     else:
-#         eval_logger.debug("LLaVA-Video is not installed. Please install LLaVA-Video to use this model.")
-
-# from llavavid.model.language_model.llava_qwen import LlavaQwenConfig
-# from llavavid.model.language_model.llava_llama import LlavaConfig
-
-# AutoConfig.register("llava_qwen", LlavaQwenConfig)
-# AutoConfig.register("llava_llama", LlavaConfig)
-
 
 AutoConfig.register("llava_llama", LlavaConfig)
 AutoConfig.register("llava_qwen", LlavaQwenConfig)

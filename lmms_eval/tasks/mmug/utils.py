@@ -192,11 +192,12 @@ def mmug_doc_to_text(doc, lmms_eval_specific_kwargs=None):
 def mmug_doc_to_text_subtitle(doc, lmms_eval_specific_kwargs=None):
     cache_dir = os.path.join(base_cache_dir, cache_name)
     video_path = os.path.join(cache_dir, "vid", doc["videoID"] + ".mp4")
-    subtitle_path = os.path.join(cache_dir, "subtitle", doc["videoID"] + ".srt")
+    subtitle_path = os.path.join(cache_dir, "subtitle", doc["videoID"] + ".srt") #"subtitle", 
     if os.path.exists(subtitle_path):  # Denote have subtitle
         subtitle = open(subtitle_path).read().splitlines()
     else:
         subtitle = ""
+    # import pdb; pdb.set_trace()
     subtitles_prompt = "This video's subtitles are listed below:\n"
     if not subtitle:
         subtitle = "No subtitles available"

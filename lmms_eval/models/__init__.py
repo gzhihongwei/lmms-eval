@@ -58,6 +58,8 @@ AVAILABLE_MODELS = {
     "ross": "Ross",
     "nova_api": "NovaAPI",
     "qwen2_5_vl": "Qwen2_5_VL",
+    "deepseek_vl2": "DeepSeek_VL2", 
+    "grok2-vision": "Grok2Vision",
 }
 
 

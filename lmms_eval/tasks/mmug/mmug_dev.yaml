@@ -5,7 +5,7 @@ include: _default_template_yaml
 lmms_eval_specific_kwargs:
   gemini_api:
     all_subtitles: True
-    post_prompt: "\nAnswer with the option's letter from the given choices directly.$"
+    # post_prompt: "\nAnswer with the option's letter from the given choices directly.$"
   nova_api:
     all_subtitles: True
     # post_prompt: "\nAnswer with the option's letter from the given choices directly.$"
@@ -20,28 +20,12 @@ lmms_eval_specific_kwargs:
 
   llava_vid:
     all_subtitles: True
+  
+  deepseek_vl2:
+    all_subtitles: True
 
-
-    # accelerate launch --num_processes 2 --gpu_ids 1,2 --main_process_port 12345 -m lmms_eval \
-    # --model llava_vid \
-    # --model_args pretrained=lmms-lab/LLaVA-NeXT-Video-32B-Qwen,conv_template=qwen_1_5,video_decode_backend=decord,max_frames_num=32，mm_spatial_pool_mode=average,mm_newline_position=grid,mm_resampler_location=after \
-    # --tasks mmug \
-    # --batch_size 1 \
-    # --log_samples \
-    # --log_samples_suffix llava_vid_32B \
-    # --output_path ./logs/
-
-    # accelerate launch --num_processes 1 --main_process_port 12345 -m lmms_eval \
-    # --model qwen2_vl \
-    # --model_args pretrained="Qwen/Qwen2-VL-2B-Instruct",device_map=auto,max_pixels=602112 \
-    # --tasks mmug \
-    # --batch_size 1 \
-    # --log_samples \
-    # --log_samples_suffix qwen2_vl \
-    # --output_path ./logs/
-
-# accelerate launch --multi_gpu --num_processes 2 --gpu_ids 1,2 --main_process_port 12345 -m lmms_eval --model llava_vid --model_args pretrained=lmms-lab/LLaVA-NeXT-Video-32B-Qwen,conv_template=qwen_1_5,video_decode_backend=decord,max_frames_num=32,mm_spatial_pool_mode=average,mm_newline_position=grid,mm_resampler_location=after --tasks mmug --batch_size 1 --log_samples --log_samples_suffix llava_vid_32B --output_path ./logs/
-
-# accelerate launch --multi_gpu --num_processes 2 --gpu_ids 3,4 -m lmms_eval --model qwen2_vl --model_args pretrained="Qwen/Qwen2-VL-2B-Instruct",device_map=auto,max_pixels=200704 --tasks mmug --batch_size 1 --log_samples --log_samples_suffix llava_vid_32B --output_path ./logs/
-
-# accelerate launch --multi_gpu --num_processes 2 --gpu_ids 0,1 -m lmms_eval --model qwen2_5_vl --model_args device_map=auto,max_pixels=200704 --tasks mmug --batch_size 1 --log_samples --log_samples_suffix qwen25 --output_path ./logs/
+  grok2-vision:
+    all_subtitles: True
+  
+  claude:
+    all_subtitles: True
