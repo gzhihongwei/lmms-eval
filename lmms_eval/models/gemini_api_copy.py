@@ -1,4 +1,5 @@
 import io
+import base64
 import json
 import os
 import pathlib
@@ -19,6 +20,7 @@ from lmms_eval.api.registry import register_model
 try:
     import google.generativeai as genai
     from google.generativeai.types import HarmBlockThreshold, HarmCategory
+    from moviepy.editor import VideoFileClip
 
     NUM_SECONDS_TO_SLEEP = 30
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -44,6 +46,7 @@ class GeminiAPI(lmms):
         continual_mode: bool = True,
         response_persistent_folder: str = "./logs/gemini_persistent_folder",
         interleave: bool = False,
+        audio_enabled: bool = False,
         # We will cache the Gemini API response in this path and use it for future requests
         **kwargs,
     ) -> None:
@@ -54,6 +57,7 @@ class GeminiAPI(lmms):
         self.continual_mode = continual_mode
         self.response_persistent_file = ""
         self.interleave = interleave
+        self.audio_enabled = audio_enabled
         # if self.continual_mode and response_persistent_folder is None:
         #     raise ValueError("Continual mode requires a persistent path for the response. We will cache the Gemini API response in this path and use it for future requests. Please provide a valid path.")
         if self.continual_mode:
@@ -62,11 +66,15 @@ class GeminiAPI(lmms):
                 os.makedirs(self.response_persistent_folder)
             self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{self.model_version}_response.json")
 
-        if os.path.exists(self.response_persistent_file):
-            with open(self.response_persistent_file, "r") as f:
-                self.response_cache = json.load(f)
-            self.cache_mode = "resume"
-        else:
+        try:
+            if os.path.exists(self.response_persistent_file):
+                with open(self.response_persistent_file, "r") as f:
+                    self.response_cache = json.load(f)
+                self.cache_mode = "resume"
+            else:
+                self.response_cache = {}
+                self.cache_mode = "start"
+        except AttributeError:
             self.response_cache = {}
             self.cache_mode = "start"
 
@@ -127,6 +135,13 @@ class GeminiAPI(lmms):
 
     def convert_modality(self, images):
         for idx, img in enumerate(images):
+            if self.audio_enabled == False:  # audio
+                img_ = img.replace(".mp4", "_no_audio.mp4")
+                if not os.path.isfile(img_):
+                    videoclip = VideoFileClip(img)
+                    new_clip = videoclip.without_audio()
+                    new_clip.write_videofile(img_) #, verbose=False, progress_bar=False
+                img = img_
             if isinstance(img, dict) and "sampling_rate" in img:  # audio
                 audio = self.encode_audio(img)
                 images[idx] = audio
@@ -181,7 +196,7 @@ class GeminiAPI(lmms):
             visuals = [doc_to_visual(self.task_dict[task][split][doc_id])]
             visuals = self.flatten(visuals)
             visuals = self.convert_modality(visuals)
-
+            # import pdb; pdb.set_trace()
             if self.interleave:
                 message = self.construct_interleaved_input(contexts, visuals)
             else:

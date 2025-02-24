@@ -24,53 +24,38 @@ CATEGORIES = ["Social Situations", "Sentiments", "Egocentric Agents", "Informati
 
 # TODO: update this
 SUB_CATEGORIES = [
-    "Humanity & History",
-    "Literature & Art",
-    "Biology & Medicine",
-    "Finance & Commerce",
-    "Astronomy",
-    "Geography",
-    "Law",
-    "Life Tip",
-    "Technology",
-    "Animation",
-    "Movie & TV Show",
-    "Documentary",
-    "News Report",
-    "Esports",
-    "Basketball",
-    "Football",
-    "Athletics",
-    "Other Sports",
-    "Stage Play",
-    "Magic Show",
-    "Variety Show",
-    "Acrobatics",
-    "Handicraft",
-    "Food",
-    "Fashion",
-    "Daily Life",
-    "Travel",
-    "Pet & Animal",
-    "Exercise",
-    "Multilingual",
+        'Humanities & Society', 
+        'Geography & Travel',
+        'Technology & Gaming', 
+        'Science & Knowledge',
+        'Movies, TV, & Animation', 
+        'Arts & Performance', 
+        'Pets & Animals',
+        'Business & Commerce', 
+        'Life & Practical Skills',
+        'Sports & Adventure', 
+        'Social Trends & Reactions',
+        'Vehicles & Transportation', 
+        'Low-Quality & Extended Content'
 ]
 
 # TODO: update this
 TASK_CATEGORIES = [
-    "Temporal Perception",
-    "Spatial Perception",
-    "Attribute Perception",
-    "Action Recognition",
-    "Object Recognition",
-    "OCR Problems",
-    "Counting Problem",
-    "Temporal Reasoning",
-    "Spatial Reasoning",
-    "Action Reasoning",
-    "Object Reasoning",
-    "Information Synopsis",
+        'visual reasoning', 
+        'emotional inference', 
+        'situational reasoning',
+        'causal reasoning', 
+        'factual recall', 
+        'spatial reasoning',
+        'relationship', 
+        'temporal distance'
 ]
+
+AUDIO_CATEGORIES = ["natural_sound", 
+                    "speech", 
+                    "music", 
+                    "artificial_sound", 
+                    "mixed_sounds"]
 
 # Copied, pruned, and modified from VideoMME
 
@@ -526,7 +511,8 @@ for i in VIDEO_TYPE:
     for j in CATEGORIES:
         for k in SUB_CATEGORIES:
             for l in TASK_CATEGORIES:
-                matrices.append(f"{i}_{j}_{k}_{l}")
+                for m in AUDIO_CATEGORIES:
+                    matrices.append(f"{i}_{j}_{k}_{l}_{m}")
 
 
 def mmug_process_results(doc, results):
@@ -622,8 +608,9 @@ def mmug_aggregate_results(results):
         for category in CATEGORIES:
             for sub_category in SUB_CATEGORIES:
                 for task_category in TASK_CATEGORIES:
-                    key = f"{video_type}_{category}_{sub_category}_{task_category}"
-                    category2score[key] = {"correct": 0, "answered": 0}
+                    for audio_category in AUDIO_CATEGORIES:
+                        key = f"{video_type}_{category}_{sub_category}_{task_category}_{audio_category}"
+                        category2score[key] = {"correct": 0, "answered": 0}
 
     for result in results:
         video_type = result["duration"]
@@ -669,6 +656,15 @@ def mmug_aggregate_results(results):
                 total_correct += v["correct"]
                 total_answered += v["answered"]
         eval_logger.info(f"Evaluation on Task Categories: {task_cate}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
+
+    for audio_cate in AUDIO_CATEGORIES:
+        total_correct = 0
+        total_answered = 0
+        for k, v in category2score.items():
+            if audio_cate in k:
+                total_correct += v["correct"]
+                total_answered += v["answered"]
+        eval_logger.info(f"Evaluation on Audio Categories: {audio_cate}: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
 
     total_correct = 0
     total_answered = 0

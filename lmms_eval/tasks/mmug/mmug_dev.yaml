@@ -5,6 +5,7 @@ include: _default_template_yaml
 lmms_eval_specific_kwargs:
   gemini_api:
     all_subtitles: True
+    gemini_api_flag: "full subtitles"
     # post_prompt: "\nAnswer with the option's letter from the given choices directly.$"
   nova_api:
     all_subtitles: True
