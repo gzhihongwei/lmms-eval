@@ -14,7 +14,7 @@ from lmms_eval import utils
 from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
-from lmms_eval.models.model_utils.load_video import load_video_decord
+from lmms_eval.tasks.mmug.utils import load_video_decord
 
 try:
     from qwen_vl_utils import process_vision_info
@@ -40,6 +40,7 @@ class Qwen2_5_VL(lmms):
         max_pixels: int = 201600,
         min_pixels: int = 3136,
         max_num_frames: int = 32,
+        text_only: bool = False,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -75,6 +76,8 @@ class Qwen2_5_VL(lmms):
         self._config = self.model.config
         self.batch_size_per_gpu = int(batch_size)
         self.use_cache = use_cache
+
+        self.text_only = text_only
 
         if accelerator.num_processes > 1:
             assert accelerator.distributed_type in [
@@ -203,9 +206,8 @@ class Qwen2_5_VL(lmms):
                     visual = visuals[i] if i < len(visuals) else None
                     if isinstance(visual, str) and visual.endswith((".mp4", ".avi", ".mov")):  # Video file
                         try:
-                            vr = decord.VideoReader(visual)
+                            vr = decord.VideoReader(visual, num_threads=1)
                             first_frame = vr[0].asnumpy()
-
                         except:
                             continue
                         height, width = first_frame.shape[:2]
@@ -236,14 +238,22 @@ class Qwen2_5_VL(lmms):
                 messages.append(message)
 
             texts = [self.processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True) for msg in messages]
-            image_inputs, video_inputs = process_vision_info(messages)
-            if video_inputs is not None:
-                total_frames = video_inputs[0].shape[0]
-                indices = np.linspace(0, total_frames - 1, self.max_num_frames, dtype=int)
-                # Append the last frame index if not already included
-                if total_frames - 1 not in indices:
-                    indices = np.append(indices, total_frames - 1)
-                video_inputs[0] = video_inputs[0][indices]
+            # image_inputs, video_inputs = process_vision_info(messages)
+
+            # print(messages[0][1], messages)
+            if self.text_only:
+                video_inputs = None
+            else:
+                video_inputs = load_video_decord(visual, max_frames_num=32)
+            image_inputs = None
+
+            # if video_inputs is not None:
+            #     total_frames = video_inputs[0].shape[0]
+            #     indices = np.linspace(0, total_frames - 1, self.max_num_frames, dtype=int)
+            #     # Append the last frame index if not already included
+            #     if total_frames - 1 not in indices:
+            #         indices = np.append(indices, total_frames - 1)
+            #     video_inputs[0] = video_inputs[0][indices]
             inputs = self.processor(text=texts, images=image_inputs, videos=video_inputs, padding=True, return_tensors="pt", fps=32)
 
             if self.device_map == "auto":

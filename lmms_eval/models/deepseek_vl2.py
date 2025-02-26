@@ -111,13 +111,14 @@ class DeepSeek_VL2(lmms):
 
     def __init__(
         self,
-        pretrained: str = "deepseek-ai/deepseek-vl2",
+        pretrained: str = "deepseek-ai/deepseek-vl2-tiny",
         device: Optional[str] = "cuda",
         device_map: Optional[str] = "cuda",
         batch_size: Optional[Union[int, str]] = 1,
         use_cache: bool = True,
         max_pixels: int = 12845056,
         max_num_frames: int = 6,
+        text_only: bool = False,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -137,8 +138,21 @@ class DeepSeek_VL2(lmms):
         #     self.device_map = f"cuda:{accelerator.local_process_index}"
 
         self._device = torch.device(f"cuda:{accelerator.local_process_index}")
-        self.device_map = split_model(pretrained)
-        
+        if pretrained != "deepseek-ai/deepseek-vl2-tiny":
+            self.device_map = split_model(pretrained)
+        else:
+            if accelerator.num_processes > 1:
+                self._device = torch.device(f"cuda:{accelerator.local_process_index}")
+                # self.device_map = f"cuda:{accelerator.local_process_index}"
+                self.device_map = split_model(pretrained)
+
+            elif accelerator.num_processes == 1 and device_map == "auto":
+                self._device = torch.device(device)
+                self.device_map = device_map
+            else:
+                self._device = torch.device(f"cuda:{accelerator.local_process_index}")
+                self.device_map = f"cuda:{accelerator.local_process_index}"
+
         self._model: DeepseekVLV2ForCausalLM = AutoModelForCausalLM.from_pretrained(
             pretrained,
             trust_remote_code=True,
@@ -151,6 +165,7 @@ class DeepSeek_VL2(lmms):
         self.max_num_frames = max_num_frames
         self.batch_size_per_gpu = int(batch_size)
         self.use_cache = use_cache
+        self.text_only = text_only
 
         # if accelerator.num_processes > 1:
         #     assert accelerator.distributed_type in [
@@ -285,8 +300,10 @@ class DeepSeek_VL2(lmms):
                 try:
                     # import pdb; pdb.set_trace()
                     # pil_images = load_pil_images(conv)
-                    pil_images = processed_images
-
+                    if self.text_only == True:
+                        pil_images = []
+                    else:
+                        pil_images = processed_images
                     inputs = self.processor(
                         conversations=conv,  # Single conversation
                         images=pil_images,

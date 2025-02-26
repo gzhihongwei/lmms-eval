@@ -188,6 +188,7 @@ class GPT4V(lmms):
                 gen_kwargs["max_new_tokens"] = 1024
             if gen_kwargs["max_new_tokens"] > 4096:
                 gen_kwargs["max_new_tokens"] = 4096
+
             if "temperature" not in gen_kwargs:
                 gen_kwargs["temperature"] = 0
             if "top_p" not in gen_kwargs:
@@ -195,8 +196,13 @@ class GPT4V(lmms):
             if "num_beams" not in gen_kwargs:
                 gen_kwargs["num_beams"] = 1
 
-            payload["max_tokens"] = gen_kwargs["max_new_tokens"]
-            payload["temperature"] = gen_kwargs["temperature"]
+            if self.model_version == 'o1':
+                # payload["max_completion_tokens"] = gen_kwargs["max_new_tokens"]
+                payload["reasoning_effort"] = "low"
+
+            else:
+                payload["max_tokens"] = gen_kwargs["max_new_tokens"]
+                payload["temperature"] = gen_kwargs["temperature"]
 
             for attempt in range(5):
                 try:
@@ -218,6 +224,7 @@ class GPT4V(lmms):
                     else:  # If this was the last attempt, log and return empty string
                         eval_logger.error(f"All 5 attempts failed. Last error message: {str(e)}.\nResponse: {response.json()}")
                         response_text = ""
+            # import pdb; pdb.set_trace()
             res.append(response_text)
             pbar.update(1)
 

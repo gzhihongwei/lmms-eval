@@ -78,6 +78,7 @@ class LlavaVid(lmms):
         add_time_instruction: bool = False,
         add_faster_video: bool = False,
         faster_token_stride: int = 10,
+        text_only: bool = False,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -110,6 +111,7 @@ class LlavaVid(lmms):
         self.delay_load = delay_load
         self.force_sample = force_sample
         self.add_time_instruction = add_time_instruction
+        self.text_only = text_only
         print("force sample:", self.force_sample)
         # self.add_faster_video = add_faster_video
         # self.faster_token_stride = faster_token_stride
@@ -316,14 +318,15 @@ class LlavaVid(lmms):
             visuals = [doc_to_visual(self.task_dict[task][split][doc_id])]
             visuals = self.flatten(visuals)
             videos = []
-            for visual in visuals:
-                video, frame_time, video_time = self.load_video(visual, self.max_frames_num, self.fps, force_sample=self.force_sample)
-                video = self._image_processor.preprocess(video, return_tensors="pt")["pixel_values"].cuda()
-                if self.torch_dtype == "bfloat16":
-                    video = video.bfloat16()
-                else:
-                    video = video.half()
-                videos.append(video)
+            if self.text_only == False:
+                for visual in visuals:
+                    video, frame_time, video_time = self.load_video(visual, self.max_frames_num, self.fps, force_sample=self.force_sample)
+                    video = self._image_processor.preprocess(video, return_tensors="pt")["pixel_values"].cuda()
+                    if self.torch_dtype == "bfloat16":
+                        video = video.bfloat16()
+                    else:
+                        video = video.half()
+                    videos.append(video)
 
             qs = contexts
             if self.model.config.mm_use_im_start_end:

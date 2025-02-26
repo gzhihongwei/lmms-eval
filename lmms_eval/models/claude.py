@@ -35,7 +35,10 @@ API_KEY = os.getenv("ANTHROPIC_API_KEY", "YOUR_API_KEY")
 class Claude(lmms):
     def __init__(
         self,
-        model_version: str = "claude-3-opus-20240229",
+        # choose from:
+        # claude-3-5-sonnet-20241022
+        # claude-3-7-sonnet-20250219
+        model_version: str = "claude-3-5-sonnet-20241022",
         image_token: str = "<image>",  # Use to separate interleaved image and text
         system_prompt: str = "",  # Whether you want some special system prompt here
         modality: str = "image",
@@ -121,7 +124,7 @@ class Claude(lmms):
         # Calculate the ratio to shrink the image
         # Somehow I found out sqrt ratio is not enough to shrink the image
         # below threshold, so I guess we do more
-        shrink_ratio = min(0.9, max_file_size / original_size)
+        shrink_ratio = min(0.6, max_file_size / original_size)
 
         # Resize the image with the calculated ratio
         new_width = int(img.width * shrink_ratio)
@@ -131,7 +134,7 @@ class Claude(lmms):
         return self.shrink_image_to_file_size(img, max_file_size)
 
     def encode_video(self, video_path):
-        vr = VideoReader(video_path, ctx=cpu(0))
+        vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
         total_frame_num = len(vr)
         uniform_sampled_frames = np.linspace(0, total_frame_num - 1, self.max_frames_num, dtype=int)
         frame_idx = uniform_sampled_frames.tolist()
@@ -249,6 +252,7 @@ class Claude(lmms):
                     break
                 eval_logger.info("Retrying...")
 
+            # import pdb; pdb.set_trace()
             response_text = message.content[0].text
             res.append(message.content[0].text)
             pbar.update(1)

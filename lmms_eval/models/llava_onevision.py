@@ -85,6 +85,7 @@ class Llava_OneVision(lmms):
         mm_spatial_pool_mode: Optional[str] = "bilinear",
         token_strategy: Optional[str] = "single",  # could be "single" or "multiple", "multiple" denotes adding multiple <image> tokens for each frame
         video_decode_backend: str = "decord",
+        text_only = False,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -120,6 +121,7 @@ class Llava_OneVision(lmms):
         self.mm_spatial_pool_stride = mm_spatial_pool_stride
         self.mm_spatial_pool_mode = mm_spatial_pool_mode
         self.video_decode_backend = video_decode_backend
+        self.text_only = text_only
 
         overwrite_config = {}
         overwrite_config["mm_spatial_pool_stride"] = self.mm_spatial_pool_stride
@@ -256,7 +258,7 @@ class Llava_OneVision(lmms):
                 self._config.image_aspect_ratio = origin_image_aspect_ratio
                 eval_logger.info(f"Resetting image aspect ratio to {origin_image_aspect_ratio}")
 
-            if visual is None or visual == []:
+            if visual is None or visual == [] or self.text_only:
                 visual = None
                 task_type = "text"
                 image_tensor = None
@@ -373,9 +375,10 @@ class Llava_OneVision(lmms):
 
     def load_video(self, video_path, max_frames_num):
         if type(video_path) == str:
-            vr = VideoReader(video_path, ctx=cpu(0))
+                vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
         else:
-            vr = VideoReader(video_path[0], ctx=cpu(0))
+            vr = VideoReader(video_path[0], ctx=cpu(0), num_threads=1)
+
         total_frame_num = len(vr)
         uniform_sampled_frames = np.linspace(0, total_frame_num - 1, max_frames_num, dtype=int)
         frame_idx = uniform_sampled_frames.tolist()
@@ -473,6 +476,7 @@ class Llava_OneVision(lmms):
                         except Exception as e:
                             eval_logger.error(f"Error {e} in loading video")
                             image_tensor = None
+                            continue
 
                         task_type = "video"
                         placeholder_count = len(frames) if self.token_strategy == "multiple" else 1

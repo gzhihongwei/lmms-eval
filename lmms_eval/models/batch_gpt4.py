@@ -59,7 +59,7 @@ class BatchGPT4(lmms):
         model_version: str = "gpt-4o",
         api_key: str = API_KEY,
         api_url: str = API_URL,
-        modality: str = "image",
+        modality: str = "video",
         max_frames_num: int = 10,
         timeout: int = 120,
         **kwargs,

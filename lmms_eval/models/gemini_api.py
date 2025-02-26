@@ -44,6 +44,7 @@ class GeminiAPI(lmms):
         continual_mode: bool = True,
         response_persistent_folder: str = "./logs/gemini_persistent_folder",
         interleave: bool = False,
+        text_only: bool = False,
         # We will cache the Gemini API response in this path and use it for future requests
         **kwargs,
     ) -> None:
@@ -89,6 +90,7 @@ class GeminiAPI(lmms):
         # self.modality = modality
 
         self.video_pool = []
+        self.text_only = text_only
 
     def free_video(self):
         for video in self.video_pool:
@@ -178,9 +180,12 @@ class GeminiAPI(lmms):
                 temperature=gen_kwargs["temperature"],
             )
 
-            visuals = [doc_to_visual(self.task_dict[task][split][doc_id])]
-            visuals = self.flatten(visuals)
-            visuals = self.convert_modality(visuals)
+            if not self.text_only:
+                visuals = [doc_to_visual(self.task_dict[task][split][doc_id])]
+                visuals = self.flatten(visuals)
+                visuals = self.convert_modality(visuals)
+            else:
+                visuals = []
 
             if self.interleave:
                 message = self.construct_interleaved_input(contexts, visuals)

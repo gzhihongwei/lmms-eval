@@ -95,25 +95,29 @@ class NovaAPI(lmms):
             visuals = [doc_to_visual(self.task_dict[task][split][doc_id])]
             visuals = self.flatten(visuals)
             # TODO: need a way to determine if it is an image or video
-            visuals = self.convert_modality(visuals)
-            
+
+            # visuals = self.convert_modality(visuals)
+            # for visual_format, visual in visuals:
+            #     messages[0]["content"].append({"video": {"format": visual_format, "bytes": {"url": visual}}})
+            # messages[0]["content"].append({"text": contexts})
+
             messages = [{"role": "user", "content": []}]
             
             # FIXME: assuming video for now
-            for visual_format, visual in visuals:
-                messages[0]["content"].append({"video": {"format": visual_format, "source": {"bytes": visual}}})
+            for visual in visuals:
+                visual = "s3://maven-cmu/MAVEN-dataset/vid/" + visual.split('/')[-1]
+                messages[0]["content"].append({"video": {"format": 'mp4', "source": {"s3Location": {"uri": visual}}}})
             messages[0]["content"].append({"text": contexts})
             
-            # system_list = [    {
-            #         "text": "You are a video analyst. When the user provides you with a video and instructions, follow the instructions"
-            #     }
-            # ]
+            system_list = [    {
+                    "text": "You are a video analyst. When the user provides you with a video and instructions, follow the instructions"
+                }
+            ]
             
             native_request = {
                 "schemaVersion": "messages-v1",
                 "messages": messages,
-                # TODO: add system prompt
-                # "system": system_list,
+                "system": system_list,
                 "inferenceConfig": inference_config
             }
 
@@ -128,6 +132,7 @@ class NovaAPI(lmms):
                 except Exception as e:
                     eval_logger.info(f"Attempt {attempt + 1} failed with error: {str(e)}")
                     # TODO: add `ValidationException` for capturing feedback
+                    # import pdb; pdb.set_trace()
                     if isinstance(e, ValueError):
                         try:
                             eval_logger.info(f"Prompt feed_back: {content.prompt_feedback}")

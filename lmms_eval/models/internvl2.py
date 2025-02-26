@@ -179,12 +179,14 @@ class InternVL2(lmms):
         batch_size: str = "1",
         num_frame: int = 32,
         num_layers=None,
+        text_only=False,
         **kwargs,
     ):
         super().__init__()
 
         self.path = pretrained
         self.num_frame = num_frame
+        self.text_only = text_only
 
         batch_size = int(batch_size)
         assert batch_size == 1, f"Batch size should be 1 for InternVL2, but got {batch_size}."
@@ -303,6 +305,7 @@ class InternVL2(lmms):
             visuals = [doc_to_visual(self.task_dict[task][split][doc_id])]
             visuals = self.flatten(visuals)
             if self.modality == "image":
+
                 if visuals:
                     visuals = [load_image(visual).to(torch.bfloat16).cuda() for visual in visuals]
                     pixel_values = torch.cat(visuals, dim=0)
@@ -317,10 +320,15 @@ class InternVL2(lmms):
             elif self.modality == "video":
                 assert len(visuals) == 1, f"Only one video is supported, but got {len(visuals)} videos."
                 video_path = visuals[0]
-                pixel_values, num_patches_list = load_video(video_path, num_segments=self.num_frame)
-                pixel_values = pixel_values.to(torch.bfloat16).cuda()
-                video_prefix = "".join([f"Frame{i+1}: <image>\n" for i in range(len(num_patches_list))])
-                question = video_prefix + contexts
+                if self.text_only:
+                    pixel_values = None
+                    num_patches_list = None
+                    question = video_prefix
+                else:
+                    pixel_values, num_patches_list = load_video(video_path, num_segments=self.num_frame)
+                    pixel_values = pixel_values.to(torch.bfloat16).cuda()
+                    video_prefix = "".join([f"Frame{i+1}: <image>\n" for i in range(len(num_patches_list))])
+                    question = video_prefix + contexts
                 response, history = self.model.chat(self.tokenizer, pixel_values, question, gen_kwargs, num_patches_list=num_patches_list, history=None, return_history=True)
             res.append(response)
             pbar.update(1)
