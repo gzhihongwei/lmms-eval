@@ -6,7 +6,7 @@ from collections import defaultdict
 from tqdm import tqdm
 import subprocess
 
-VID_ROOT = "/home/liuyuex/.cache/huggingface/mmug/vid_full"
+VID_ROOT = "/ocean/projects/cis240055p/liuyuex/hg/mmug/vid_full"
 
 df = pd.read_csv("data.csv")  # Top row is not header
 
@@ -31,29 +31,46 @@ approved_df["videoID"] = (
 # problematic_video = ["5VeZfX-AVXA", "8TOcGnJE9P4"]
 
 
+# def get_length(filename):
+#     result = subprocess.run(
+#         [
+#             "ffprobe",
+#             "-v",
+#             "error",
+#             "-show_entries",
+#             "format=duration",
+#             "-of",
+#             "default=noprint_wrappers=1:nokey=1",
+#             filename,
+#         ],
+#         stdout=subprocess.PIPE,
+#         stderr=subprocess.STDOUT,
+#     )
+#     return float(result.stdout)
+
+import subprocess
+import re
+
+from hachoir.parser import createParser
+from hachoir.metadata import extractMetadata
+
 def get_length(filename):
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            filename,
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    return float(result.stdout)
+    parser = createParser(filename)
+    if not parser:
+        raise ValueError("Could not parse file")
+    
+    metadata = extractMetadata(parser)
+    if metadata and metadata.has("duration"):
+        return metadata.get("duration").total_seconds()
+    
+    raise ValueError("Duration not found")
 
 
 cache = defaultdict(int)
 
 reformatted = pd.DataFrame(
     columns=[
-        "video_id",
+        "video_type",
         "duration",
         "domain",
         "sub_category",
@@ -64,7 +81,7 @@ reformatted = pd.DataFrame(
         "question",
         "options",
         "answer",
-        "annotator_assigned_difficulty",
+        # "video_type",
     ]
 )
 num_rows = 0
@@ -74,13 +91,13 @@ for _, row in tqdm(approved_df.iterrows(), total=len(approved_df)):
     # In case we have multiple segments from the same video
     row["videoID"] = f"{row['videoID']}" # _{cache[row['videoID']]}
     cache[row["videoID"]] += 1
-
+    # import pdb; pdb.set_trace()
     try:
         duration = get_length(f"{VID_ROOT}/{row['videoID']}.mp4")
     except:
         continue
     common = [
-        row["id"],
+        row["annotator_assigned_difficulty"],
         duration,
         row["domain"].split(", "),
         row["sub_category"],
@@ -89,13 +106,14 @@ for _, row in tqdm(approved_df.iterrows(), total=len(approved_df)):
         None,
         # "placeholder",
         row["q1_sub_task"],
-        row["annotator_assigned_difficulty"],
         None,
         None,
+        None,
+        # row["annotator_assigned_difficulty"],
     ]
 
     common2 = [
-        row["id"],
+        row["annotator_assigned_difficulty"],
         duration,
         row["domain"].split(", "),
         row["sub_category"],
@@ -104,9 +122,10 @@ for _, row in tqdm(approved_df.iterrows(), total=len(approved_df)):
         None,
         # "placeholder",
         row["q2_sub_task"],
-        row["annotator_assigned_difficulty"],
         None,
         None,
+        None,
+        # row["annotator_assigned_difficulty"],
     ]
 
     # Want complete annotations only
@@ -130,7 +149,10 @@ for _, row in tqdm(approved_df.iterrows(), total=len(approved_df)):
 
     mcq1[9] = options
     mcq1[10] = row["q1_correct_option"].upper()
+    # mcq1[11] = row["annotator_assigned_difficulty"]
     reformatted.loc[num_rows] = mcq1
+
+    # import pdb; pdb.set_trace()
     num_rows += 1
     # First open question
     open1_1 = common.copy()
@@ -143,6 +165,8 @@ for _, row in tqdm(approved_df.iterrows(), total=len(approved_df)):
         open1_1[10] = row[f"q1_opt_{row['q1_correct_option']}"].rstrip(".") + "."
 
     open1_1[10] = row["open_a1_1"].rstrip(".") + "."
+    # open1_1[11] = row["annotator_assigned_difficulty"]
+
     reformatted.loc[num_rows] = open1_1
     num_rows += 1
 
@@ -187,6 +211,8 @@ for _, row in tqdm(approved_df.iterrows(), total=len(approved_df)):
         mcq2[10] = row["q2_correct_option"].upper()
     except AttributeError:  # Not completed
         continue
+    # mcq2[11] = row["annotator_assigned_difficulty"]
+
     reformatted.loc[num_rows] = mcq2
     num_rows += 1
     # import pdb; pdb.set_trace()
@@ -199,6 +225,7 @@ for _, row in tqdm(approved_df.iterrows(), total=len(approved_df)):
         open2_1[10] = row["open_a2_1"].rstrip(".") + "."
     except AttributeError:
         open2_1[10] = row[f"q2_opt_{row['q2_correct_option']}"].rstrip(".") + "."
+    # open2_1[11] = row["annotator_assigned_difficulty"]
 
     reformatted.loc[num_rows] = open2_1
     num_rows += 1

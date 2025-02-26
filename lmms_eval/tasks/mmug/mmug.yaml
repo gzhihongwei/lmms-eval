@@ -1,6 +1,7 @@
 group: mmug
 task:
 - mmug_dev
+- mmug_wo_subtitle
 # - mmug_easy
 # - mmug_medium
 # - mmug_hard

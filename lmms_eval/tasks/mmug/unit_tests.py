@@ -1,6 +1,26 @@
 import os
 import decord
 import numpy as np
+import subprocess
+
+def transcode(filename):
+    # ffmpeg -i jgrDhPPKj_w_0.mp4 -c:v libx264 -crf 18 jgrDhPPKj_w_0_.mp4
+    print('transcoding:', filename)
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-i",
+            filename,
+            "-c:v",
+            "libx264",
+            "-crf",
+            "18",
+            filename,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    return 
 
 def check_video_stats(folder_path):
     """Check .mp4 files in the folder, compute total video length, and collect statistics."""
@@ -16,7 +36,7 @@ def check_video_stats(folder_path):
             file_path = os.path.join(folder_path, file_name)
             try:
                 vr = decord.VideoReader(file_path)
-                first_frame = vr[0].numpy()  # Load first frame to check for corruption
+                first_frame = vr[0]  # Load first frame to check for corruption
                 fps = vr.get_avg_fps()  # Get frames per second
                 num_frames = len(vr)  # Total number of frames
                 duration = num_frames / fps  # Compute duration in seconds
@@ -26,11 +46,11 @@ def check_video_stats(folder_path):
                 fps_list.append(fps)
                 durations.append(duration)
                 total_videos += 1
-                
                 print(f"{file_name}: {duration:.2f} sec ({duration/60:.2f} min), FPS: {fps:.2f}")
 
             except Exception as e:
-                print(f"Error loading {file_name}: {e}")
+                transcode(file_path)
+                # print(f"Error loading {file_name}: {result}")
                 corrupt_files.append(file_name)
 
     # Convert total duration to hours and minutes
@@ -92,5 +112,5 @@ def check_video_stats(folder_path):
     }
 
 # Example usage
-folder_path = "/home/liuyuex/.cache/huggingface/mmug/vid"
+folder_path = "/ocean/projects/cis240055p/liuyuex/hg/mmug/vid"
 corrupt_videos = check_video_stats(folder_path)

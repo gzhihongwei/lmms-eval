@@ -16,11 +16,12 @@ from loguru import logger as eval_logger
 from tqdm import tqdm
 
 from lmms_eval.tasks._task_utils import file_utils
+from decord import VideoReader, cpu
 
 # TODO: fix this as short?
-VIDEO_TYPE = ["short"]
+VIDEO_TYPE = ["easy", "medium", "hard"]
 # TODO: update this
-CATEGORIES = ["Social Situations", "Sentiments", "Egocentric Agents", "Information Querying", "Sports", "Gaming", "Shopping"]
+CATEGORIES = ["social", "sentiment", "egocentric_agent", "information_querying", "sports", "gaming", "shopping"]
 
 # TODO: update this
 SUB_CATEGORIES = [
@@ -36,7 +37,8 @@ SUB_CATEGORIES = [
         'Sports & Adventure', 
         'Social Trends & Reactions',
         'Vehicles & Transportation', 
-        'Low-Quality & Extended Content'
+        'Low-Quality & Extended Content',
+        'None',
 ]
 
 # TODO: update this
@@ -48,14 +50,17 @@ TASK_CATEGORIES = [
         'factual recall', 
         'spatial reasoning',
         'relationship', 
-        'temporal distance'
+        'temporal distance',
+        'None',
 ]
 
 AUDIO_CATEGORIES = ["natural_sound", 
                     "speech", 
                     "music", 
                     "artificial_sound", 
-                    "mixed_sounds"]
+                    "mixed_sounds",
+                    'None',
+                    ]
 
 # Copied, pruned, and modified from VideoMME
 
@@ -82,6 +87,23 @@ headers = {
     "Authorization": f"Bearer {API_KEY}",
     "Content-Type": "application/json",
 }
+
+
+def load_video_decord(video_path, max_frames_num):
+    if type(video_path) == str:
+        vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
+        vr_cv = cv2.VideoCapture(video_path)
+
+    else:
+        vr = VideoReader(video_path[0], ctx=cpu(0), num_threads=1)
+        vr_cv = cv2.VideoCapture(video_path[0])
+    total_frame_num = int(vr_cv.get(cv2.CAP_PROP_FRAME_COUNT))
+    # total_frame_num = len(vr)
+    uniform_sampled_frames = np.linspace(1, total_frame_num - 10, max_frames_num, dtype=int)
+    frame_idx = uniform_sampled_frames.tolist()
+    # print(total_frame_num, frame_idx)
+    spare_frames = vr.get_batch(frame_idx).asnumpy()
+    return spare_frames  # (frames, height, width, channels)
 
 
 def parse_subtitle_time(time_str):
@@ -137,6 +159,8 @@ def mmug_doc_to_visual(doc):
         video_path = video_path.replace("mp4", "MP4")
     elif os.path.exists(video_path.replace("mp4", "mkv")):
         video_path = video_path.replace("mp4", "mkv")
+    elif os.path.exists(video_path.replace(".mp4", "_0.mp4")):
+            video_path = video_path.replace(".mp4", "_0.mp4")
     else:
         sys.exit(f"video path: \"{video_path}\" does not exist, please check")
         
@@ -552,11 +576,12 @@ def mmug_process_results(doc, results):
         context_dict = {"question_id": doc["question_id"], "Q": doc["question"], "A": doc["answer"], "pred": pred, "score": score_context}
         
     # gt_ans = doc["answer"].lower().strip().replace(".", "")
-
     category = doc["domain"]
     sub_category = doc["sub_category"]
     task_category = doc["task_type"]
-    data_dict = {"question_id": doc["question_id"], "duration": doc["duration"], "category": category, "sub_category": sub_category, "task_category": task_category, "question": question, "pred_answer": pred, "answer": answer}
+    audio_category = doc["audio_category"]
+    video_type = doc["video_type"]
+    data_dict = {"question_id": doc["question_id"], "duration": doc["duration"], "category": category, "sub_category": sub_category, "task_category": task_category, "question": question, "pred_answer": pred, "answer": answer, "audio_type": task_category, "video_type": video_type}
     
     perception_dict = None
     consistency_dict = None
@@ -602,6 +627,10 @@ def mmug_aggregate_results(results):
     Returns:
         A score
     """
+    now_date_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    eval_file_name = f"eval_result_{now_date_time}.log"
+    eval_logger.add(eval_file_name)
+
     category2score = {}
 
     for video_type in VIDEO_TYPE:
@@ -609,15 +638,24 @@ def mmug_aggregate_results(results):
             for sub_category in SUB_CATEGORIES:
                 for task_category in TASK_CATEGORIES:
                     for audio_category in AUDIO_CATEGORIES:
+                        # if isinstance(category, list): 
+                        #     key = f"{video_type}_{category[0]}_{sub_category}_{task_category}_{audio_category}"
+                        # else:
                         key = f"{video_type}_{category}_{sub_category}_{task_category}_{audio_category}"
                         category2score[key] = {"correct": 0, "answered": 0}
 
     for result in results:
-        video_type = result["duration"]
-        category = result["category"]
+        if result is None:
+            continue 
+
+        video_type = result["video_type"]
+        if isinstance(result["category"], list): 
+            category = result["category"][0]
+        else:
+            category = result["category"]
         sub_category = result["sub_category"]
         task_category = result["task_category"]
-        key = f"{video_type}_{category}_{sub_category}_{task_category}"
+        key = f"{video_type}_{category}_{sub_category}_{task_category}_{audio_category}"
         category2score[key]["answered"] += 1
         category2score[key]["correct"] += result["pred_answer"] == result["answer"]
 
@@ -673,8 +711,6 @@ def mmug_aggregate_results(results):
         total_answered += v["answered"]
     eval_logger.info(f"Overall Performance: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
     return 100 * total_correct / total_answered if total_answered > 0 else 0
-
-    
     
 def mmug_gpt_eval(result_file_path, args):
     """
