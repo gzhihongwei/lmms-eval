@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple, Union
 import decord
 import numpy as np
 import torch
+import json
 from accelerate import Accelerator, DistributedType
 from loguru import logger as eval_logger
 from PIL import Image
@@ -15,6 +16,8 @@ from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
 from lmms_eval.tasks.mmug.utils import load_video_decord
+
+import os 
 
 try:
     from qwen_vl_utils import process_vision_info
@@ -41,11 +44,15 @@ class Qwen2_5_VL(lmms):
         min_pixels: int = 3136,
         max_num_frames: int = 32,
         text_only: bool = False,
+        continual_mode: bool = True,
+        response_persistent_folder: str = "./logs/qwen25_persistent_folder",
         **kwargs,
     ) -> None:
         super().__init__()
         # Do not use kwargs for now
         assert kwargs == {}, f"Unexpected kwargs: {kwargs}"
+        self.continual_mode = continual_mode
+        self.pretrained = pretrained
 
         accelerator = Accelerator()
         if accelerator.num_processes > 1:
@@ -96,6 +103,21 @@ class Qwen2_5_VL(lmms):
         else:
             self._rank = 0
             self._word_size = 1
+
+        if self.continual_mode:
+            self.response_persistent_folder = response_persistent_folder
+            if not os.path.exists(self.response_persistent_folder):
+                os.makedirs(self.response_persistent_folder)
+            # import pdb; pdb.set_trace()
+            self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{self.pretrained.split('/')[-1]}_response.json")
+
+        if os.path.exists(self.response_persistent_file):
+            with open(self.response_persistent_file, "r") as f:
+                self.response_cache = json.load(f)
+            self.cache_mode = "resume"
+        else:
+            self.response_cache = {}
+            self.cache_mode = "start"
 
     @property
     def config(self):
@@ -151,6 +173,9 @@ class Qwen2_5_VL(lmms):
     def generate_until(self, requests: List[Instance]) -> List[str]:
         res = []
 
+        def get_uuid(task, split, doc_id):
+            return f"{task}___{split}___{doc_id}"
+
         def _collate(x):
             # the negative sign on len(toks) sorts descending - this has a few advantages:
             # - time estimates will always be over not underestimates, which is more useful for planning
@@ -168,17 +193,33 @@ class Qwen2_5_VL(lmms):
         re_ords = utils.Collator([reg.args for reg in requests], _collate, grouping=True)
         chunks = re_ords.get_batched(n=self.batch_size, batch_fn=None)
         for chunk in chunks:
+
             contexts, all_gen_kwargs, doc_to_visual, doc_id, task, split = zip(*chunk)
+            # import pdb; pdb.set_trace()
+
             task = task[0]
             split = split[0]
             visuals = [doc_to_visual[0](self.task_dict[task][split][ids]) for ids in doc_id]
             visuals = self.flatten(visuals)
 
+            if self.continual_mode and self.cache_mode == "resume":
+                doc_uuid = get_uuid(task, split, doc_id)
+                if doc_uuid in self.response_cache:
+                    ans = self.response_cache[doc_uuid]
+                    if ans:
+                        res.append(ans)
+                        pbar.update(1)
+                        continue
+
             gen_kwargs = all_gen_kwargs[0]
 
             # Set default values for until and max_new_tokens
-            until = [self.tokenizer.decode(self.eot_token_id)]
-
+            try:
+                until = [self.tokenizer.decode(self.eot_token_id)]
+            except:
+                res.append('')
+                pbar.update(1)
+                continue
             # Update values from gen_kwargs if present
             if "until" in gen_kwargs:
                 until = gen_kwargs.pop("until")
@@ -296,6 +337,13 @@ class Qwen2_5_VL(lmms):
                 res.append(ans)
                 self.cache_hook.add_partial("generate_until", (context, gen_kwargs), ans)
                 pbar.update(1)
+
+                if self.continual_mode is True:  # Cache the response
+                    doc_uuid = get_uuid(task, split, doc_id)
+                    self.response_cache[doc_uuid] = ans
+                    with open(self.response_persistent_file, "w") as f:
+                        json.dump(self.response_cache, f)
+
             # reorder this group of results back to original unsorted form
         res = re_ords.get_original(res)
 

@@ -428,6 +428,7 @@ def evaluate(
             print_writeout(task)
         # aggregate Instances by LM method requested to get output.
         for instance in task.instances:
+            # import pdb; pdb.set_trace()
             reqtype = instance.request_type
             requests[reqtype].append(instance)
 
