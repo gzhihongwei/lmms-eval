@@ -54,6 +54,7 @@ class Claude(lmms):
         self.system_prompt = system_prompt
         self.modality = modality
         self.max_frames_num = max_frames_num
+        self.response_persistent_folder = response_persistent_folder
 
         self.continual_mode = continual_mode
         if self.continual_mode:

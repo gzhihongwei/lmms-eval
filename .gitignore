@@ -41,5 +41,8 @@ Video-MME/
 VATEX/
 lmms_eval/tasks/vatex/__pycache__/utils.cpython-310.pyc
 lmms_eval/tasks/mlvu/__pycache__/utils.cpython-310.pyc
+shell_scripts/
+final_outputs/
+*.log
 
 scripts/
