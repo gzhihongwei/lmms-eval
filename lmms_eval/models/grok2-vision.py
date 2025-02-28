@@ -15,10 +15,8 @@ from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
 from openai import OpenAI
-try:
-    from decord import VideoReader, cpu
-except ImportError:
-    pass
+import av
+from lmms_eval.models.model_utils.load_video import record_video_length_stream
 
 from PIL import Image
 
@@ -63,22 +61,36 @@ class Grok2Vision(lmms):
         self.max_frames_num = max_frames_num
         self.image_token = "<image>"
         self.timeout = timeout
-        self.continual_mode = continual_mode
-        if self.continual_mode:
-            if response_persistent_folder is None:
-                raise ValueError("Continual mode requires a persistent path for the response. Please provide a valid path.")
+        self.continual_mode = True
+        self.response_persistent_folder = 'logs/grok2vision'
+        # if self.continual_mode:
+        #     if response_persistent_folder is None:
+        #         raise ValueError("Continual mode requires a persistent path for the response. Please provide a valid path.")
 
-            os.makedirs(response_persistent_folder, exist_ok=True)
-            self.response_persistent_folder = response_persistent_folder
+        #     os.makedirs(response_persistent_folder, exist_ok=True)
+        #     self.response_persistent_folder = response_persistent_folder
+        #     self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{self.model_version}_response.json")
+
+        #     if os.path.exists(self.response_persistent_file):
+        #         with open(self.response_persistent_file, "r") as f:
+        #             self.response_cache = json.load(f)
+        #         self.cache_mode = "resume"
+        #     else:
+        #         self.response_cache = {}
+        #         self.cache_mode = "start"
+        
+        if self.continual_mode:
+            if not os.path.exists(self.response_persistent_folder):
+                os.makedirs(self.response_persistent_folder, exist_ok=True)
             self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{self.model_version}_response.json")
 
-            if os.path.exists(self.response_persistent_file):
-                with open(self.response_persistent_file, "r") as f:
-                    self.response_cache = json.load(f)
-                self.cache_mode = "resume"
-            else:
-                self.response_cache = {}
-                self.cache_mode = "start"
+        if os.path.exists(self.response_persistent_file):
+            with open(self.response_persistent_file, "r") as f:
+                self.response_cache = json.load(f)
+            self.cache_mode = "resume"
+        else:
+            self.response_cache = {}
+            self.cache_mode = "start"
         
 
         accelerator = Accelerator()
@@ -110,20 +122,26 @@ class Grok2Vision(lmms):
 
     # Function to encode the video
     def encode_video(self, video_path, for_get_frames_num):
-        vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
-        total_frame_num = len(vr)
+        # vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
+        # total_frame_num = len(vr)
+        # NOTE: converting to pyav because decord is misbehaving on some videos
+        # TODO: investigate which videos are misbehaving
+        container = av.open(video_path)
+        total_frame_num = container.streams.video[0].frames
         uniform_sampled_frames = np.linspace(0, total_frame_num - 1, for_get_frames_num, dtype=int)
 
         # Ensure the last frame is included
         if total_frame_num - 1 not in uniform_sampled_frames:
             uniform_sampled_frames = np.append(uniform_sampled_frames, total_frame_num - 1)
 
-        frame_idx = uniform_sampled_frames.tolist()
-        frames = vr.get_batch(frame_idx).asnumpy()
+        # frame_idx = uniform_sampled_frames.tolist()
+        # frames = vr.get_batch(frame_idx).asnumpy()
+        frames = record_video_length_stream(container, uniform_sampled_frames)
 
         base64_frames = []
         for frame in frames:
-            img = Image.fromarray(frame)
+            # print(frame)
+            img = Image.fromarray(frame.to_ndarray(format="rgb24"))
             output_buffer = BytesIO()
             img.save(output_buffer, format="PNG")
             byte_data = output_buffer.getvalue()
@@ -235,7 +253,7 @@ class Grok2Vision(lmms):
                 doc_uuid = f"{task}___{split}___{doc_id}"
                 self.response_cache[doc_uuid] = response_text
                 with open(self.response_persistent_file, "w") as f:
-                    json.dump(self.response_cache, f)
+                    json.dump(self.response_cache, f, indent=4)
 
         pbar.close()
         return res
