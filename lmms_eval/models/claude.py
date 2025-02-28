@@ -13,6 +13,7 @@ from tqdm import tqdm
 from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
+import av
 
 NUM_SECONDS_TO_SLEEP = 5
 
@@ -23,7 +24,7 @@ eval_logger = logger
 try:
     import anthropic
     import numpy as np
-    from decord import VideoReader, cpu
+    # from decord import VideoReader, cpu
 except Exception as e:
     eval_logger.warning(f"Error importing claude: {e}")
 
@@ -43,8 +44,8 @@ class Claude(lmms):
         system_prompt: str = "",  # Whether you want some special system prompt here
         modality: str = "image",
         max_frames_num: int = 10,
-        continual_mode: bool = False,
-        response_persistent_folder: str = None,
+        continual_mode: bool = True,
+        response_persistent_folder: str = 'logs/claude',
         **kwargs,
     ) -> None:
         super().__init__()
@@ -56,20 +57,17 @@ class Claude(lmms):
 
         self.continual_mode = continual_mode
         if self.continual_mode:
-            if response_persistent_folder is None:
-                raise ValueError("Continual mode requires a persistent path for the response. Please provide a valid path.")
-
-            os.makedirs(response_persistent_folder, exist_ok=True)
-            self.response_persistent_folder = response_persistent_folder
+            if not os.path.exists(self.response_persistent_folder):
+                os.makedirs(self.response_persistent_folder, exist_ok=True)
             self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{self.model_version}_response.json")
 
-            if os.path.exists(self.response_persistent_file):
-                with open(self.response_persistent_file, "r") as f:
-                    self.response_cache = json.load(f)
-                self.cache_mode = "resume"
-            else:
-                self.response_cache = {}
-                self.cache_mode = "start"
+        if os.path.exists(self.response_persistent_file):
+            with open(self.response_persistent_file, "r") as f:
+                self.response_cache = json.load(f)
+            self.cache_mode = "resume"
+        else:
+            self.response_cache = {}
+            self.cache_mode = "start"
 
         accelerator = Accelerator()
         if accelerator.num_processes > 1:
@@ -133,21 +131,33 @@ class Claude(lmms):
 
         return self.shrink_image_to_file_size(img, max_file_size)
 
-    def encode_video(self, video_path):
-        vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
-        total_frame_num = len(vr)
-        uniform_sampled_frames = np.linspace(0, total_frame_num - 1, self.max_frames_num, dtype=int)
-        frame_idx = uniform_sampled_frames.tolist()
-        frames = vr.get_batch(frame_idx).asnumpy()
+    # Function to encode the video
+    def encode_video(self, video_path, for_get_frames_num):
+        # vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
+        # total_frame_num = len(vr)
+        # NOTE: converting to pyav because decord is misbehaving on some videos
+        # TODO: investigate which videos are misbehaving
+        container = av.open(video_path)
+        total_frame_num = container.streams.video[0].frames
+        uniform_sampled_frames = np.linspace(0, total_frame_num - 1, for_get_frames_num, dtype=int)
+
+        # Ensure the last frame is included
+        if total_frame_num - 1 not in uniform_sampled_frames:
+            uniform_sampled_frames = np.append(uniform_sampled_frames, total_frame_num - 1)
+
+        # frame_idx = uniform_sampled_frames.tolist()
+        # frames = vr.get_batch(frame_idx).asnumpy()
+        frames = record_video_length_stream(container, uniform_sampled_frames)
 
         base64_frames = []
         for frame in frames:
-            img = Image.fromarray(frame)
+            # print(frame)
+            img = Image.fromarray(frame.to_ndarray(format="rgb24"))
             output_buffer = BytesIO()
-            img.save(output_buffer, format="JPEG")
+            img.save(output_buffer, format="PNG")
             byte_data = output_buffer.getvalue()
             base64_str = base64.b64encode(byte_data).decode("utf-8")
-            base64_frames.append(f"{base64_str}")
+            base64_frames.append(base64_str)
 
         return base64_frames
 

@@ -61,25 +61,11 @@ class Grok2Vision(lmms):
         self.max_frames_num = max_frames_num
         self.image_token = "<image>"
         self.timeout = timeout
-        self.continual_mode = True
-        self.response_persistent_folder = 'logs/grok2vision'
-        # if self.continual_mode:
-        #     if response_persistent_folder is None:
-        #         raise ValueError("Continual mode requires a persistent path for the response. Please provide a valid path.")
-
-        #     os.makedirs(response_persistent_folder, exist_ok=True)
-        #     self.response_persistent_folder = response_persistent_folder
-        #     self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{self.model_version}_response.json")
-
-        #     if os.path.exists(self.response_persistent_file):
-        #         with open(self.response_persistent_file, "r") as f:
-        #             self.response_cache = json.load(f)
-        #         self.cache_mode = "resume"
-        #     else:
-        #         self.response_cache = {}
-        #         self.cache_mode = "start"
+        self.continual_mode = False
+        self.response_persistent_folder = None#'logs/grok2vision'
         
         if self.continual_mode:
+            self.response_persistent_folder = response_persistent_folder
             if not os.path.exists(self.response_persistent_folder):
                 os.makedirs(self.response_persistent_folder, exist_ok=True)
             self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{self.model_version}_response.json")
