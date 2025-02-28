@@ -13,6 +13,8 @@ from tqdm import tqdm
 from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
+from lmms_eval.models.model_utils.load_video import record_video_length_stream
+
 import av
 
 NUM_SECONDS_TO_SLEEP = 5
@@ -21,12 +23,8 @@ from loguru import logger
 
 eval_logger = logger
 
-try:
-    import anthropic
-    import numpy as np
-    # from decord import VideoReader, cpu
-except Exception as e:
-    eval_logger.warning(f"Error importing claude: {e}")
+import anthropic
+import numpy as np
 
 API_URL = os.getenv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1/complete")
 API_KEY = os.getenv("ANTHROPIC_API_KEY", "YOUR_API_KEY")
@@ -199,7 +197,7 @@ class Claude(lmms):
             imgs = []
             for visual in visuals:
                 if isinstance(visual, str) and os.path.exists(visual):  # Assuming visual is a path to a video
-                    visual = self.encode_video(visual)
+                    visual = self.encode_video(visual, self.max_frames_num)
                     for img in visual:
                         imgs.append(img)
                 else:
