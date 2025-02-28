@@ -151,7 +151,6 @@ class Claude(lmms):
         base64_frames = []
         for frame in frames:
             # print(frame)
-            # img = Image.fromarray(frame.to_ndarray(format="rgb24"))
             img = frame.to_image()
             output_buffer = BytesIO()
             img.save(output_buffer, format="PNG")
