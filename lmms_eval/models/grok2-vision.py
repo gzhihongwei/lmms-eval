@@ -48,8 +48,8 @@ class Grok2Vision(lmms):
         modality: str = "video",
         max_frames_num: int = 32,
         timeout: int = 120,
-        continual_mode: bool = False,
-        response_persistent_folder: str = None,
+        continual_mode: bool = True,
+        response_persistent_folder: str = 'logs/grok2vision',
         **kwargs,
     ) -> None:
         super().__init__()
@@ -61,8 +61,8 @@ class Grok2Vision(lmms):
         self.max_frames_num = max_frames_num
         self.image_token = "<image>"
         self.timeout = timeout
-        self.continual_mode = False
-        self.response_persistent_folder = None#'logs/grok2vision'
+        self.continual_mode = continual_mode
+        self.response_persistent_folder = response_persistent_folder
         
         if self.continual_mode:
             self.response_persistent_folder = response_persistent_folder
