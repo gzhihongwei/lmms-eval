@@ -15,7 +15,7 @@ from lmms_eval import utils
 from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
-from lmms_eval.tasks.mmug.utils import load_video_decord
+from lmms_eval.models.model_utils.load_video import read_video_pyav_base64
 
 import os 
 
@@ -46,6 +46,9 @@ class Qwen2_5_VL(lmms):
         text_only: bool = False,
         continual_mode: bool = True,
         response_persistent_folder: str = "./logs/qwen25_persistent_folder",
+        use_custom_video_loader: Optional[bool] = True,
+        fps: Optional[float] = None,  # Only applicable if use_custom_video_loader is True
+        max_image_size: Optional[int] = None,  # Only applicable if use_custom_video_loader is True        
         **kwargs,
     ) -> None:
         super().__init__()
@@ -53,6 +56,14 @@ class Qwen2_5_VL(lmms):
         assert kwargs == {}, f"Unexpected kwargs: {kwargs}"
         self.continual_mode = continual_mode
         self.pretrained = pretrained
+
+        self.use_custom_video_loader = use_custom_video_loader
+        self.fps = fps
+        # if self.fps and not self.use_custom_video_loader:
+        #     raise ValueError("FPS is only applicable if use_custom_video_loader is True")
+        self.max_image_size = max_image_size
+        if self.max_image_size and not self.use_custom_video_loader:
+            raise ValueError("max_image_size is only applicable if use_custom_video_loader is True")
 
         accelerator = Accelerator()
         if accelerator.num_processes > 1:
@@ -210,6 +221,14 @@ class Qwen2_5_VL(lmms):
                         res.append(ans)
                         pbar.update(1)
                         continue
+            
+            question_input = []
+            # if doc_id in [(6,), (484,), (483,), (261,), (3039,),(487,), (259,), (263,), (472,), (486,),(3042,),(3041,), (258,), (2817,), (2814,), (297,), (3042,), (258,), (485,)]:
+            #     res.append([''])
+            #     doc_uuid = get_uuid(task, split, doc_id)
+            #     self.response_cache[doc_uuid] = [""]
+            #     continue
+            # print(doc_id)
 
             gen_kwargs = all_gen_kwargs[0]
 
@@ -246,14 +265,16 @@ class Qwen2_5_VL(lmms):
                 if len(visuals) > 0:
                     visual = visuals[i] if i < len(visuals) else None
                     if isinstance(visual, str) and visual.endswith((".mp4", ".avi", ".mov")):  # Video file
-                        try:
-                            vr = decord.VideoReader(visual, num_threads=1)
+                        if self.use_custom_video_loader:
+                            visual = read_video_pyav_base64(visual, num_frm=self.max_num_frames, fps=self.fps, img_format="JPEG", max_image_size=self.max_image_size)
+                            image_contents = list(map(lambda x: f"data:image/jpeg;base64,{x}", visual))
+                            message.append({"role": "user", "content": [{"type": "video", "video": image_contents}, {"type": "text", "text": context}]})
+                        else:
+                            vr = decord.VideoReader(visual)
                             first_frame = vr[0].asnumpy()
-                        except:
-                            continue
-                        height, width = first_frame.shape[:2]
-                        # max_pixels = height * width
-                        message.append({"role": "user", "content": [{"type": "video", "video": visual, "max_pixels": self.max_pixels}, {"type": "text", "text": context}]})
+                            height, width = first_frame.shape[:2]
+                            # max_pixels = height * width
+                            message.append({"role": "user", "content": [{"type": "video", "video": visual, "max_pixels": 360 * 420}, {"type": "text", "text": context}]})
                     elif isinstance(visual, Image.Image):  # Single image
                         base64_image = visual.convert("RGB")
                         buffer = BytesIO()
@@ -278,25 +299,23 @@ class Qwen2_5_VL(lmms):
 
                 messages.append(message)
 
-            texts = [self.processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True) for msg in messages]
-            # image_inputs, video_inputs = process_vision_info(messages)
+            text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            image_inputs, video_inputs = process_vision_info(messages)
 
             # print(messages[0][1], messages)
             if self.text_only:
                 video_inputs = None
             else:
-                video_inputs = load_video_decord(visual, max_frames_num=32)
-            image_inputs = None
+                image_inputs, video_inputs = process_vision_info(messages)
+                # image_inputs = None
 
-            # if video_inputs is not None:
-            #     total_frames = video_inputs[0].shape[0]
-            #     indices = np.linspace(0, total_frames - 1, self.max_num_frames, dtype=int)
-            #     # Append the last frame index if not already included
-            #     if total_frames - 1 not in indices:
-            #         indices = np.append(indices, total_frames - 1)
-            #     video_inputs[0] = video_inputs[0][indices]
-            inputs = self.processor(text=texts, images=image_inputs, videos=video_inputs, padding=True, return_tensors="pt", fps=32)
-
+            # import pdb; pdb.set_trace()
+            try:
+                inputs = self.processor(text=text, images=image_inputs, videos=video_inputs, padding=True, return_tensors="pt", fps=32)
+            except:
+                res.append('')
+                pbar.update(1)
+                continue
             if self.device_map == "auto":
                 inputs = inputs.to("cuda")
             else:
@@ -338,11 +357,10 @@ class Qwen2_5_VL(lmms):
                 self.cache_hook.add_partial("generate_until", (context, gen_kwargs), ans)
                 pbar.update(1)
 
-                if self.continual_mode is True:  # Cache the response
-                    doc_uuid = get_uuid(task, split, doc_id)
-                    self.response_cache[doc_uuid] = ans
-                    with open(self.response_persistent_file, "w") as f:
-                        json.dump(self.response_cache, f)
+                doc_uuid = get_uuid(task, split, doc_id)
+                self.response_cache[doc_uuid] = ans
+                with open(self.response_persistent_file, "w") as f:
+                    json.dump(self.response_cache, f)
 
             # reorder this group of results back to original unsorted form
         res = re_ords.get_original(res)
