@@ -1,6 +1,7 @@
 import logging
 from typing import List, Tuple
 
+import av
 import numpy as np
 import torch
 import torchvision.transforms as T
@@ -14,6 +15,7 @@ from transformers import AutoModel, AutoTokenizer
 from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
+from lmms_eval.models.model_utils.load_video import record_video_length_stream
 
 eval_logger = logging.getLogger("eval_logger")
 
@@ -101,15 +103,32 @@ def get_index(bound, fps, max_frame, first_idx=0, num_segments=32):
 
 
 def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=32):
-    vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
-    max_frame = len(vr) - 1
-    fps = float(vr.get_avg_fps())
+    # vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
+    # max_frame = len(vr) - 1
+    # fps = float(vr.get_avg_fps())
+    # NOTE: converting to pyav because decord is misbehaving on some videos
+    # TODO: investigate which videos are misbehaving
+    container = av.open(video_path)
+    total_frames = container.streams.video[0].frames
+    max_frame = total_frames - 1
+    fps = 1  # NOTE: dummy value since fps isn't very accurate
 
     pixel_values_list, num_patches_list = [], []
     transform = build_transform(input_size=input_size)
     frame_indices = get_index(bound, fps, max_frame, first_idx=0, num_segments=num_segments)
-    for frame_index in frame_indices:
-        img = Image.fromarray(vr[frame_index].asnumpy()).convert("RGB")
+    frames = record_video_length_stream(container, frame_indices)
+
+    # for frame_index in frame_indices:
+    #     img = Image.fromarray(vr[frame_index].asnumpy()).convert("RGB")
+    #     img = dynamic_preprocess(img, image_size=input_size, use_thumbnail=True, max_num=max_num)
+    #     pixel_values = [transform(tile) for tile in img]
+    #     pixel_values = torch.stack(pixel_values)
+    #     num_patches_list.append(pixel_values.shape[0])
+    #     pixel_values_list.append(pixel_values)
+    # pixel_values = torch.cat(pixel_values_list)
+    # return pixel_values, num_patches_list
+    for frame in frames:
+        img = Image.fromarray(frame).convert("RGB")
         img = dynamic_preprocess(img, image_size=input_size, use_thumbnail=True, max_num=max_num)
         pixel_values = [transform(tile) for tile in img]
         pixel_values = torch.stack(pixel_values)

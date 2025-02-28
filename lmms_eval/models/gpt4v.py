@@ -6,6 +6,7 @@ from copy import deepcopy
 from io import BytesIO
 from typing import List, Tuple
 
+import av
 import numpy as np
 import requests as url_requests
 from accelerate import Accelerator, DistributedType
@@ -14,6 +15,7 @@ from tqdm import tqdm
 from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
+from lmms_eval.models.model_utils.load_video import record_video_length_stream
 
 try:
     from decord import VideoReader, cpu
@@ -106,16 +108,21 @@ class GPT4V(lmms):
 
     # Function to encode the video
     def encode_video(self, video_path, for_get_frames_num):
-        vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
-        total_frame_num = len(vr)
+        # vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
+        # total_frame_num = len(vr)
+        # NOTE: converting to pyav because decord is misbehaving on some videos
+        # TODO: investigate which videos are misbehaving
+        container = av.open(video_path)
+        total_frame_num = container.streams.video[0].frames
         uniform_sampled_frames = np.linspace(0, total_frame_num - 1, for_get_frames_num, dtype=int)
 
         # Ensure the last frame is included
         if total_frame_num - 1 not in uniform_sampled_frames:
             uniform_sampled_frames = np.append(uniform_sampled_frames, total_frame_num - 1)
 
-        frame_idx = uniform_sampled_frames.tolist()
-        frames = vr.get_batch(frame_idx).asnumpy()
+        # frame_idx = uniform_sampled_frames.tolist()
+        # frames = vr.get_batch(frame_idx).asnumpy()
+        frames = record_video_length_stream(container, uniform_sampled_frames)
 
         base64_frames = []
         for frame in frames:
@@ -196,7 +203,7 @@ class GPT4V(lmms):
             if "num_beams" not in gen_kwargs:
                 gen_kwargs["num_beams"] = 1
 
-            if self.model_version == 'o1':
+            if self.model_version == "o1":
                 # payload["max_completion_tokens"] = gen_kwargs["max_new_tokens"]
                 payload["reasoning_effort"] = "low"
 
