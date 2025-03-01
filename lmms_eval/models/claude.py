@@ -14,8 +14,8 @@ from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
 from lmms_eval.models.model_utils.load_video import record_video_length_stream
-
-import av
+import torchvision.transforms as T
+from torchvision.transforms.functional import InterpolationMode
 
 NUM_SECONDS_TO_SLEEP = 5
 
@@ -23,12 +23,36 @@ from loguru import logger
 
 eval_logger = logger
 
-import anthropic
-import numpy as np
+try:
+    import anthropic
+    import numpy as np
+    from decord import VideoReader, cpu
+except Exception as e:
+    eval_logger.warning(f"Error importing claude: {e}")
+
+import av
 
 API_URL = os.getenv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1/complete")
 API_KEY = os.getenv("ANTHROPIC_API_KEY", "YOUR_API_KEY")
 
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
+
+def build_transform(input_size):
+    MEAN, STD = IMAGENET_MEAN, IMAGENET_STD
+    transform = T.Compose([T.Lambda(lambda img: img.convert("RGB") if img.mode != "RGB" else img), T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC), T.ToTensor(), T.Normalize(mean=MEAN, std=STD)])
+    return transform
+
+def get_index(bound, fps, max_frame, first_idx=0, num_segments=32):
+    if bound:
+        start, end = bound[0], bound[1]
+    else:
+        start, end = -100000, 100000
+    start_idx = max(first_idx, round(start * fps))
+    end_idx = min(round(end * fps), max_frame)
+    seg_size = float(end_idx - start_idx) / num_segments
+    frame_indices = np.array([int(start_idx + (seg_size / 2) + np.round(seg_size * idx)) for idx in range(num_segments)])
+    return frame_indices
 
 @register_model("claude")
 class Claude(lmms):
@@ -43,7 +67,7 @@ class Claude(lmms):
         modality: str = "image",
         max_frames_num: int = 10,
         continual_mode: bool = True,
-        response_persistent_folder: str = 'logs/claude',
+        response_persistent_folder: str = None,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -52,13 +76,16 @@ class Claude(lmms):
         self.system_prompt = system_prompt
         self.modality = modality
         self.max_frames_num = max_frames_num
-        self.response_persistent_folder = response_persistent_folder
+
+        response_persistent_folder = '/ocean/projects/cis240055p/liuyuex/benchmark/lmms-eval/logs/claude_persistent_folder'
 
         self.continual_mode = continual_mode
         if self.continual_mode:
+            self.response_persistent_folder = response_persistent_folder
             if not os.path.exists(self.response_persistent_folder):
-                os.makedirs(self.response_persistent_folder, exist_ok=True)
-            self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{self.model_version}_response.json")
+                os.makedirs(self.response_persistent_folder)
+            # import pdb; pdb.set_trace()
+            self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{model_version.split('/')[-1]}_response.json")
 
         if os.path.exists(self.response_persistent_file):
             with open(self.response_persistent_file, "r") as f:
@@ -130,33 +157,32 @@ class Claude(lmms):
 
         return self.shrink_image_to_file_size(img, max_file_size)
 
-    # Function to encode the video
-    def encode_video(self, video_path, for_get_frames_num):
+    def encode_video(self, video_path):
         # vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
         # total_frame_num = len(vr)
-        # NOTE: converting to pyav because decord is misbehaving on some videos
-        # TODO: investigate which videos are misbehaving
-        container = av.open(video_path)
-        total_frame_num = container.streams.video[0].frames
-        uniform_sampled_frames = np.linspace(0, total_frame_num - 1, for_get_frames_num, dtype=int)
-
-        # Ensure the last frame is included
-        if total_frame_num - 1 not in uniform_sampled_frames:
-            uniform_sampled_frames = np.append(uniform_sampled_frames, total_frame_num - 1)
-
+        # uniform_sampled_frames = np.linspace(0, total_frame_num - 1, self.max_frames_num, dtype=int)
         # frame_idx = uniform_sampled_frames.tolist()
         # frames = vr.get_batch(frame_idx).asnumpy()
-        frames = record_video_length_stream(container, uniform_sampled_frames)
+
+        container = av.open(video_path)
+        total_frames = container.streams.video[0].frames
+        max_frame = total_frames - 1
+        fps = 1  # NOTE: dummy value since fps isn't very accurate
+        pixel_values_list, num_patches_list = [], []
+        transform = build_transform(input_size=448)
+        frame_indices = get_index(None, fps, max_frame, first_idx=0, num_segments=self.max_frames_num)
+        frames = record_video_length_stream(container, frame_indices)
 
         base64_frames = []
         for frame in frames:
-            # print(frame)
+            # img = Image.fromarray(frame)
             img = frame.to_image()
+            # import pdb; pdb.set_trace()
             output_buffer = BytesIO()
-            img.save(output_buffer, format="PNG")
+            img.save(output_buffer, format="JPEG")
             byte_data = output_buffer.getvalue()
             base64_str = base64.b64encode(byte_data).decode("utf-8")
-            base64_frames.append(base64_str)
+            base64_frames.append(f"{base64_str}")
 
         return base64_frames
 
@@ -197,7 +223,7 @@ class Claude(lmms):
             imgs = []
             for visual in visuals:
                 if isinstance(visual, str) and os.path.exists(visual):  # Assuming visual is a path to a video
-                    visual = self.encode_video(visual, self.max_frames_num)
+                    visual = self.encode_video(visual)
                     for img in visual:
                         imgs.append(img)
                 else:
