@@ -1,6 +1,7 @@
 import logging
 from typing import List, Tuple
 
+import av
 import numpy as np
 import torch
 import torchvision.transforms as T
@@ -14,6 +15,7 @@ from transformers import AutoModel, AutoTokenizer
 from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
+from lmms_eval.models.model_utils.load_video import record_video_length_stream
 
 eval_logger = logging.getLogger("eval_logger")
 
@@ -101,15 +103,32 @@ def get_index(bound, fps, max_frame, first_idx=0, num_segments=32):
 
 
 def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=32):
-    vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
-    max_frame = len(vr) - 1
-    fps = float(vr.get_avg_fps())
+    # vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
+    # max_frame = len(vr) - 1
+    # fps = float(vr.get_avg_fps())
+    # NOTE: converting to pyav because decord is misbehaving on some videos
+    # TODO: investigate which videos are misbehaving
+    container = av.open(video_path)
+    total_frames = container.streams.video[0].frames
+    max_frame = total_frames - 1
+    fps = 1  # NOTE: dummy value since fps isn't very accurate
 
     pixel_values_list, num_patches_list = [], []
     transform = build_transform(input_size=input_size)
     frame_indices = get_index(bound, fps, max_frame, first_idx=0, num_segments=num_segments)
-    for frame_index in frame_indices:
-        img = Image.fromarray(vr[frame_index].asnumpy()).convert("RGB")
+    frames = record_video_length_stream(container, frame_indices)
+
+    # for frame_index in frame_indices:
+    #     img = Image.fromarray(vr[frame_index].asnumpy()).convert("RGB")
+    #     img = dynamic_preprocess(img, image_size=input_size, use_thumbnail=True, max_num=max_num)
+    #     pixel_values = [transform(tile) for tile in img]
+    #     pixel_values = torch.stack(pixel_values)
+    #     num_patches_list.append(pixel_values.shape[0])
+    #     pixel_values_list.append(pixel_values)
+    # pixel_values = torch.cat(pixel_values_list)
+    # return pixel_values, num_patches_list
+    for frame in frames:
+        img = frame.to_image()
         img = dynamic_preprocess(img, image_size=input_size, use_thumbnail=True, max_num=max_num)
         pixel_values = [transform(tile) for tile in img]
         pixel_values = torch.stack(pixel_values)
@@ -119,7 +138,9 @@ def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=3
     return pixel_values, num_patches_list
 
 
+import json
 import math
+import os
 from datetime import timedelta
 
 from accelerate.state import AcceleratorState
@@ -170,6 +191,7 @@ def split_model(model_name, num_layers=None):
 
 @register_model("internvl2")
 class InternVL2(lmms):
+
     def __init__(
         self,
         pretrained: str = "OpenGVLab/InternVL2-2B",
@@ -179,10 +201,14 @@ class InternVL2(lmms):
         batch_size: str = "1",
         num_frame: int = 32,
         num_layers=None,
+        continual_mode: bool = True,
+        response_persistent_folder: str = "./logs/internvl2_persistent_folder",
         text_only=False,
         **kwargs,
     ):
         super().__init__()
+        self.continual_mode = continual_mode
+        self.pretrained = pretrained
 
         self.path = pretrained
         self.num_frame = num_frame
@@ -243,6 +269,21 @@ class InternVL2(lmms):
 
         self.modality = modality
 
+        if self.continual_mode:
+            self.response_persistent_folder = response_persistent_folder
+            if not os.path.exists(self.response_persistent_folder):
+                os.makedirs(self.response_persistent_folder)
+            # import pdb; pdb.set_trace()
+            self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{self.pretrained.split('/')[-1]}_response.json")
+
+        if os.path.exists(self.response_persistent_file):
+            with open(self.response_persistent_file, "r") as f:
+                self.response_cache = json.load(f)
+            self.cache_mode = "resume"
+        else:
+            self.response_cache = {}
+            self.cache_mode = "start"
+
     @property
     def config(self):
         # return the associated transformers.AutoConfig for the given pretrained model.
@@ -285,6 +326,10 @@ class InternVL2(lmms):
 
     def generate_until(self, requests) -> List[str]:
         res = []
+
+        def get_uuid(task, split, doc_id):
+            return f"{task}___{split}___{doc_id}"
+
         pbar = tqdm(total=len(requests), disable=(self.rank != 0), desc="Model Responding")
 
         for contexts, gen_kwargs, doc_to_visual, doc_id, task, split in [reg.args for reg in requests]:
@@ -304,6 +349,16 @@ class InternVL2(lmms):
 
             visuals = [doc_to_visual(self.task_dict[task][split][doc_id])]
             visuals = self.flatten(visuals)
+
+            if self.continual_mode and self.cache_mode == "resume":
+                doc_uuid = get_uuid(task, split, doc_id)
+                if doc_uuid in self.response_cache:
+                    ans = self.response_cache[doc_uuid]
+                    if ans:
+                        res.append(ans)
+                        pbar.update(1)
+                        continue
+
             if self.modality == "image":
 
                 if visuals:
@@ -332,6 +387,13 @@ class InternVL2(lmms):
                 response, history = self.model.chat(self.tokenizer, pixel_values, question, gen_kwargs, num_patches_list=num_patches_list, history=None, return_history=True)
             res.append(response)
             pbar.update(1)
+
+            if self.continual_mode is True:  # Cache the response
+                doc_uuid = get_uuid(task, split, doc_id)
+                self.response_cache[doc_uuid] = response
+                with open(self.response_persistent_file, "w") as f:
+                    json.dump(self.response_cache, f)
+
         pbar.close()
         return res
 
