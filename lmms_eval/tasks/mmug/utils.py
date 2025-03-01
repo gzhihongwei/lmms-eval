@@ -600,6 +600,7 @@ def mmug_process_results(doc, results):
         "category": category,
         "sub_category": sub_category,
         "task_category": task_category,
+        "audio_category": audio_category,
         "question": question,
         "pred_answer": pred,
         "answer": answer,
