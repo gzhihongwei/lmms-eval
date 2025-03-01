@@ -7,6 +7,9 @@ import warnings
 from datetime import timedelta
 from typing import List, Optional, Tuple, Union
 
+import os 
+import json 
+
 import numpy as np
 import PIL
 import torch
@@ -23,6 +26,9 @@ from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
 from lmms_eval.models.model_utils.load_video import read_video_pyav
+
+from interruptingcow import timeout
+
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -80,17 +86,22 @@ class Llava_OneVision(lmms):
         use_cache: Optional[bool] = True,
         truncate_context: Optional[bool] = False,  # whether to truncate the context in generation, set it False for LLaVA-1.6
         customized_config: Optional[str] = None,  # ends in json
-        max_frames_num: Optional[int] = 32,
+        max_frames_num: Optional[int] = 24,
         mm_spatial_pool_stride: Optional[int] = 2,
         mm_spatial_pool_mode: Optional[str] = "bilinear",
         token_strategy: Optional[str] = "single",  # could be "single" or "multiple", "multiple" denotes adding multiple <image> tokens for each frame
         video_decode_backend: str = "decord",
         text_only = False,
+        continual_mode: bool = True,
+        response_persistent_folder: str = "./logs/onevision_persistent_folder",
+
         **kwargs,
     ) -> None:
         super().__init__()
         # Do not use kwargs for now
         assert kwargs == {}, f"Unexpected kwargs: {kwargs}"
+        self.continual_mode = continual_mode
+        self.pretrained = pretrained
 
         accelerator_kwargs = InitProcessGroupKwargs(timeout=timedelta(weeks=52))
         accelerator = Accelerator(kwargs_handlers=[accelerator_kwargs])
@@ -179,6 +190,23 @@ class Llava_OneVision(lmms):
             self.model.to(self._device)
             self._rank = 0
             self._world_size = 1
+
+        if self.continual_mode:
+            self.response_persistent_folder = response_persistent_folder
+            if not os.path.exists(self.response_persistent_folder):
+                os.makedirs(self.response_persistent_folder)
+            # import pdb; pdb.set_trace()
+            self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{self.pretrained.split('/')[-1]}_response.json")
+
+        if os.path.exists(self.response_persistent_file):
+            with open(self.response_persistent_file, "r") as f:
+                self.response_cache = json.load(f)
+            self.cache_mode = "resume"
+        else:
+            self.response_cache = {}
+            self.cache_mode = "start"
+        # import pdb; pdb.set_trace()
+
 
     @property
     def config(self):
@@ -297,11 +325,15 @@ class Llava_OneVision(lmms):
                         if self.video_decode_backend == "decord":
                             frames = self.load_video(visual, self.max_frames_num)
                         elif self.video_decode_backend == "pyav":
-                            frames = read_video_pyav(visual[0], num_frm=self.max_frames_num)
+                            if isinstance(visual, list):
+                                frames = read_video_pyav(visual[0], num_frm=self.max_frames_num)
+                            else:
+                                frames = read_video_pyav(visual, num_frm=self.max_frames_num)
+                        # import pdb; pdb.set_trace()
                         frames = self._image_processor.preprocess(frames, return_tensors="pt")["pixel_values"].half().cuda()
                         image_tensor.append(frames)
                     except Exception as e:
-                        eval_logger.error(f"Error {e} in loading video")
+                        eval_logger.error(f"Error {e} in loading video loglike")
                         image_tensor = None
 
                     task_type = "video"
@@ -388,6 +420,9 @@ class Llava_OneVision(lmms):
     def generate_until(self, requests: List[Instance]) -> List[str]:
         res = []
 
+        def get_uuid(task, split, doc_id):
+            return f"{task}___{split}___{doc_id}"
+
         def _collate(x):
             # the negative sign on len(toks) sorts descending - this has a few advantages:
             # - time estimates will always be over not underestimates, which is more useful for planning
@@ -408,7 +443,7 @@ class Llava_OneVision(lmms):
         pbar = tqdm(total=num_iters, disable=(self.rank != 0), desc="Model Responding")
 
         origin_image_aspect_ratio = getattr(self._config, "image_aspect_ratio", None)
-
+        # print(len(chunks))
         for chunk in chunks:
             batched_contexts, all_gen_kwargs, batched_doc_to_visual, batched_doc_id, batched_task, batched_split = zip(*chunk)
             task = batched_task[0]
@@ -422,8 +457,24 @@ class Llava_OneVision(lmms):
             if "until" in gen_kwargs:
                 gen_kwargs.pop("until")
 
+            if self.continual_mode and self.cache_mode == "resume":
+                doc_uuid = get_uuid(task, split, batched_doc_id)
+                if doc_uuid in self.response_cache:
+                    ans = self.response_cache[doc_uuid]
+                    if ans:
+                        # res.append(ans)
+                        res.append(ans)
+                        pbar.update(1)
+                        continue
+
             question_input = []
-            # import ipdb; ipdb.set_trace()
+            # if batched_doc_id in [(6,), (484,), (483,), (261,), (3039,),(487,), (259,), (263,), (472,), (486,),(3042,),(3041,), (258,), (2817,), (2814,), (297,), (3042,), (258,), (485,)]:
+            #     res.append([''])
+            #     doc_uuid = get_uuid(task, split, batched_doc_id)
+            #     self.response_cache[doc_uuid] = [""]
+            #     continue
+            # import pdb; pdb.set_trace()
+            # print(batched_doc_id)
             for visual, context in zip(batched_visuals, batched_contexts):
                 if origin_image_aspect_ratio is not None and self._config.image_aspect_ratio != origin_image_aspect_ratio:
                     self._config.image_aspect_ratio = origin_image_aspect_ratio
@@ -466,17 +517,12 @@ class Llava_OneVision(lmms):
 
                     elif type(visual[0]) == str:  # For video task
                         image_tensor = []
-                        try:
-                            if self.video_decode_backend == "decord":
-                                frames = self.load_video(visual, self.max_frames_num)
-                            elif self.video_decode_backend == "pyav":
-                                frames = read_video_pyav(visual[0], num_frm=self.max_frames_num)
-                            frames = self._image_processor.preprocess(frames, return_tensors="pt")["pixel_values"].half().cuda()
-                            image_tensor.append(frames)
-                        except Exception as e:
-                            eval_logger.error(f"Error {e} in loading video")
-                            image_tensor = None
-                            continue
+                        if isinstance(visual, list):
+                            frames = read_video_pyav(visual[0], num_frm=self.max_frames_num)
+                        else:
+                            frames = read_video_pyav(visual, num_frm=self.max_frames_num)
+                        frames = self._image_processor.preprocess(frames,return_tensors="pt")["pixel_values"].half().cuda()
+                        image_tensor.append(frames)
 
                         task_type = "video"
                         placeholder_count = len(frames) if self.token_strategy == "multiple" else 1
@@ -561,15 +607,23 @@ class Llava_OneVision(lmms):
 
                 text_outputs = self.tokenizer.batch_decode(cont, skip_special_tokens=True)
             except Exception as e:
-                raise e
+                # raise e
+                text_outputs = [""]
+                
 
             text_outputs = [response.strip() for response in text_outputs]
             res.extend(text_outputs)
             self.cache_hook.add_partial("generate_until", (context, gen_kwargs), text_outputs)
             pbar.update(1)
-            # reorder this group of results back to original unsorted form
-        res = re_ords.get_original(res)
 
+            doc_uuid = get_uuid(task, split, batched_doc_id)
+            self.response_cache[doc_uuid] = text_outputs
+            with open(self.response_persistent_file, "w") as f:
+                json.dump(self.response_cache, f)
+
+                    
+        # reorder this group of results back to original unsorted form
+        res = re_ords.get_original(res)
         pbar.close()
         return res
 
@@ -682,7 +736,11 @@ class Llava_OneVision(lmms):
                                 if self.video_decode_backend == "decord":
                                     frames = self.load_video(visual, self.max_frames_num)
                                 elif self.video_decode_backend == "pyav":
-                                    frames = read_video_pyav(visual[0], num_frm=self.max_frames_num)
+                                    if isinstance(visual, list):
+                                        frames = read_video_pyav(visual[0], num_frm=self.max_frames_num)
+                                    else:
+                                        frames = read_video_pyav(visual, num_frm=self.max_frames_num)
+                                # import pdb; pdb.set_trace()
                                 frames = self._image_processor.preprocess(frames, return_tensors="pt")["pixel_values"].half().cuda()
                                 image_tensor.append(frames)
                             except Exception as e:
