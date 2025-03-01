@@ -18,49 +18,47 @@ from tqdm import tqdm
 from lmms_eval.tasks._task_utils import file_utils
 from decord import VideoReader, cpu
 
-# TODO: fix this as short?
+
 VIDEO_TYPE = ["easy", "medium", "hard"]
-# TODO: update this
+
 CATEGORIES = ["social", "sentiment", "egocentric_agent", "information_querying", "sports", "gaming", "shopping"]
 
-# TODO: update this
 SUB_CATEGORIES = [
-        'Humanities & Society', 
-        'Geography & Travel',
-        'Technology & Gaming', 
-        'Science & Knowledge',
-        'Movies, TV, & Animation', 
-        'Arts & Performance', 
-        'Pets & Animals',
-        'Business & Commerce', 
-        'Life & Practical Skills',
-        'Sports & Adventure', 
-        'Social Trends & Reactions',
-        'Vehicles & Transportation', 
-        'Low-Quality & Extended Content',
-        'None',
+    "Humanities & Society",
+    "Geography & Travel",
+    "Technology & Gaming",
+    "Science & Knowledge",
+    "Movies, TV, & Animation",
+    "Arts & Performance",
+    "Pets & Animals",
+    "Business & Commerce",
+    "Life & Practical Skills",
+    "Sports & Adventure",
+    "Social Trends & Reactions",
+    "Vehicles & Transportation",
+    "Low-Quality & Extended Content",
+    "None",
 ]
 
-# TODO: update this
 TASK_CATEGORIES = [
-        'visual reasoning', 
-        'emotional inference', 
-        'situational reasoning',
-        'causal reasoning', 
-        'factual recall', 
-        'spatial reasoning',
-        'relationship', 
-        'temporal distance',
-        'None',
+    "visual reasoning",
+    "emotional inference",
+    "situational reasoning",
+    "causal reasoning",
+    "factual recall",
+    "spatial reasoning",
+    "relationship",
+    "temporal distance",
+    "None",
 ]
 
-AUDIO_CATEGORIES = ["natural_sound", 
-                    "speech", 
-                    "music", 
-                    "artificial_sound", 
-                    "mixed_sounds",
-                    'None',
-                    ]
+AUDIO_CATEGORIES = [
+    "natural_sound",
+    "speech",
+    "music",
+    "artificial_sound",
+    "mixed_sounds",
+]
 
 # Copied, pruned, and modified from VideoMME
 
@@ -74,7 +72,7 @@ with open(Path(__file__).parent / "_default_template_yaml", "r") as f:
         if "!function" not in line:
             safe_data.append(line)
     config = yaml.safe_load("".join(safe_data))
-    
+
 cache_name = config["dataset_kwargs"]["cache_dir"]
 
 NUM_SECONDS_TO_SLEEP = 5
@@ -147,30 +145,45 @@ def extract_subtitles(video_path, subtitle_path):
     return subtitle_frames, total_frame
 
 
-def mmug_doc_to_visual(doc):
-    cache_dir = os.path.join(base_cache_dir, cache_name)
-    video_path = doc["videoID"] + ".mp4"
-    video_path = os.path.join(cache_dir, 
-                              "vid", # TODO: need to eventually re-add this back
-                              video_path)
-    if os.path.exists(video_path):
-        video_path = video_path
-    elif os.path.exists(video_path.replace("mp4", "MP4")):
-        video_path = video_path.replace("mp4", "MP4")
-    elif os.path.exists(video_path.replace("mp4", "mkv")):
-        video_path = video_path.replace("mp4", "mkv")
-    elif os.path.exists(video_path.replace(".mp4", "_0.mp4")):
+def mmug_doc_to_visual_builder(sub_dir):
+    def helper(doc):
+        cache_dir = os.path.join(base_cache_dir, cache_name)
+        video_path = doc["videoID"] + ".mp4"
+        video_path = os.path.join(cache_dir, sub_dir, video_path)
+        if os.path.exists(video_path):
+            video_path = video_path
+        elif os.path.exists(video_path.replace(".mp4", "_0.mp4")):
             video_path = video_path.replace(".mp4", "_0.mp4")
+        else:
+            sys.exit(f'video path: "{video_path}" does not exist, please check')
+
+        return [video_path]
+
+    return helper
+
+
+mmug_doc_to_visual = mmug_doc_to_visual_builder("vid_only")
+mmug_doc_to_audiovisual = mmug_doc_to_visual_builder("vid")
+
+
+def mmug_doc_to_audio(doc):
+    cache_dir = os.path.join(base_cache_dir, cache_name)
+    audio_path = doc["videoID"] + ".mp3"
+    audio_path = os.path.join(cache_dir, "audio_only", audio_path)
+    if os.path.exists(audio_path):
+        audio_path = audio_path
+    elif os.path.exists(audio_path.replace(".mp3", "_0.mp3")):
+        audio_path = audio_path.replace(".mp3", "_0.mp3")
     else:
-        sys.exit(f"video path: \"{video_path}\" does not exist, please check")
-        
-    return [video_path]
+        sys.exit(f'video path: "{audio_path}" does not exist, please check')
+
+    return [audio_path]
 
 
 def mmug_doc_to_text(doc, lmms_eval_specific_kwargs=None):
     post_prompts = (lmms_eval_specific_kwargs or {}).get("post_prompt", "$").split("$")
     question = doc["question"]
-    
+
     if doc["question_id"].endswith("-1"):
         option_prompt = "Select the best answer to the following multiple-choice question based on the video and the subtitles. Respond with only the letter (A, B, C, D, E, F, G, or H) of the correct option."
         options = "\n".join(doc["options"])
@@ -178,7 +191,7 @@ def mmug_doc_to_text(doc, lmms_eval_specific_kwargs=None):
         post_prompt = post_prompts[0] or " The best answer is:"
         full_prompt = option_prompt + "\n" + question + "\n" + post_prompt
         return full_prompt
-    
+
     # TODO: fine tune these pre and post prompts
     pre_prompt = (lmms_eval_specific_kwargs or {}).get("pre_prompt", "")
     post_prompt = post_prompts[1] or " The answer is:"
@@ -201,7 +214,7 @@ def mmug_doc_to_text(doc, lmms_eval_specific_kwargs=None):
 def mmug_doc_to_text_subtitle(doc, lmms_eval_specific_kwargs=None):
     cache_dir = os.path.join(base_cache_dir, cache_name)
     video_path = os.path.join(cache_dir, "vid", doc["videoID"] + ".mp4")
-    subtitle_path = os.path.join(cache_dir, "subtitle", doc["videoID"] + ".srt") #"subtitle", 
+    subtitle_path = os.path.join(cache_dir, "subtitle", doc["videoID"] + ".srt")
     if os.path.exists(subtitle_path):  # Denote have subtitle
         subtitle = open(subtitle_path).read().splitlines()
     else:
@@ -215,7 +228,7 @@ def mmug_doc_to_text_subtitle(doc, lmms_eval_specific_kwargs=None):
             # Filter empty strings out
             subtitle = list(filter(len, subtitle))
             textlist = subtitle[2::3]
-            
+
             subtitle_text = "\n".join(textlist)
         else:
             if "frame_num" in lmms_eval_specific_kwargs:
@@ -237,10 +250,10 @@ def mmug_doc_to_text_subtitle(doc, lmms_eval_specific_kwargs=None):
                     textlist.append(subtitle_by_frame[idx][2])
                 subtitle_text = "\n".join(textlist)
         subtitle = subtitle_text
-        
+
     post_prompts = (lmms_eval_specific_kwargs or {}).get("post_prompt", "$").split("$")
     question = doc["question"]
-        
+
     if doc["question_id"].endswith("-1"):
         option_prompt = "Select the best answer to the following multiple-choice question based on the video and the subtitles. Respond with only the letter (A, B, C, D, E, F, G, or H) of the correct option."
         options = "\n".join(doc["options"])
@@ -248,11 +261,12 @@ def mmug_doc_to_text_subtitle(doc, lmms_eval_specific_kwargs=None):
         post_prompt = post_prompts[0] or " The best answer is:"
         full_prompt = subtitles_prompt + subtitle + "\n" + option_prompt + "\n" + question + "\n" + post_prompt
         return full_prompt
-    
+
     # TODO: fine tune these pre and post prompts
     pre_prompt = (lmms_eval_specific_kwargs or {}).get("pre_prompt", "")
     post_prompt = post_prompts[1] or " The answer is:"
     return f"{subtitles_prompt}{subtitle}\n{pre_prompt}{question}{post_prompt}"
+
 
 def mmug_doc_to_text_wo_subtitle(doc, lmms_eval_specific_kwargs=None):
     cache_dir = os.path.join(base_cache_dir, cache_name)
@@ -260,10 +274,10 @@ def mmug_doc_to_text_wo_subtitle(doc, lmms_eval_specific_kwargs=None):
     subtitle_path = os.path.join(cache_dir, "subtitle", doc["videoID"] + ".srt")
     subtitle = ""
     subtitles_prompt = "This video's subtitles are listed below:\n"
-        
+
     post_prompts = (lmms_eval_specific_kwargs or {}).get("post_prompt", "$").split("$")
     question = doc["question"]
-        
+
     if doc["question_id"].endswith("-1"):
         option_prompt = "Select the best answer to the following multiple-choice question based on the video and the subtitles. Respond with only the letter (A, B, C, D, E, F, G, or H) of the correct option."
         options = "\n".join(doc["options"])
@@ -271,7 +285,7 @@ def mmug_doc_to_text_wo_subtitle(doc, lmms_eval_specific_kwargs=None):
         post_prompt = post_prompts[0] or " The best answer is:"
         full_prompt = subtitles_prompt + subtitle + "\n" + option_prompt + "\n" + question + "\n" + post_prompt
         return full_prompt
-    
+
     # TODO: fine tune these pre and post prompts
     pre_prompt = (lmms_eval_specific_kwargs or {}).get("pre_prompt", "")
     post_prompt = post_prompts[1] or " The answer is:"
@@ -550,49 +564,65 @@ def mmug_process_results(doc, results):
     pred = results[0]
     question = doc["question"]
     answer = doc["answer"]
-    # TODO: see if we need to do additional filtering here for open-ended questions
-    
+
     correctness_dict = None
     detailed_orientation_dict = None
     context_dict = None
-    
+
     if doc["question_id"].endswith("-1"):
         pred = extract_characters_regex(pred)
-       
+
     elif doc["question_id"].endswith("-2"):
         review_correctness, model_name = get_eval_generic(question, answer, pred, "correctness", 64)
         score_correctness = parse_score(review_correctness)
-        
+
         correctness_dict = {"question_id": doc["question_id"], "Q": doc["question"], "A": doc["answer"], "pred": pred, "score": score_correctness}
-        
+
         review_detailed_orientation, model_name = get_eval_generic(question, answer, pred, "detailed_orientation", 64)
         score_detailed_orientation = parse_score(review_detailed_orientation)
-        
+
         detailed_orientation_dict = {"question_id": doc["question_id"], "Q": doc["question"], "A": doc["answer"], "pred": pred, "score": score_detailed_orientation}
-        
+
         review_context, model_name = get_eval_generic(question, answer, pred, "context", 64)
         score_context = parse_score(review_context)
-        
+
         context_dict = {"question_id": doc["question_id"], "Q": doc["question"], "A": doc["answer"], "pred": pred, "score": score_context}
-        
+
     # gt_ans = doc["answer"].lower().strip().replace(".", "")
     category = doc["domain"]
     sub_category = doc["sub_category"]
     task_category = doc["task_type"]
     audio_category = doc["audio_category"]
     video_type = doc["video_type"]
-    data_dict = {"question_id": doc["question_id"], "duration": doc["duration"], "category": category, "sub_category": sub_category, "task_category": task_category, "question": question, "pred_answer": pred, "answer": answer, "audio_type": task_category, "video_type": video_type}
-    
+    data_dict = {
+        "question_id": doc["question_id"],
+        "duration": doc["duration"],
+        "category": category,
+        "sub_category": sub_category,
+        "task_category": task_category,
+        "question": question,
+        "pred_answer": pred,
+        "answer": answer,
+        "audio_type": task_category,
+        "video_type": video_type,
+    }
+
     perception_dict = None
     consistency_dict = None
-    
+
     if doc["question_id"].endswith("-1"):
         perception_dict = data_dict
     else:
         consistency_dict = data_dict
 
     # return {f"mmug_perception_score": data_dict for metric in matrices}
-    return {"mmug_perception_score": perception_dict, "mmug_gpt_eval_score_correctness": correctness_dict, "mmug_gpt_eval_score_detailed_orientation": detailed_orientation_dict, "mmug_gpt_eval_score_context": context_dict, "mmug_gpt_eval_score_consistency": consistency_dict} 
+    return {
+        "mmug_perception_score": perception_dict,
+        "mmug_gpt_eval_score_correctness": correctness_dict,
+        "mmug_gpt_eval_score_detailed_orientation": detailed_orientation_dict,
+        "mmug_gpt_eval_score_context": context_dict,
+        "mmug_gpt_eval_score_consistency": consistency_dict,
+    }
 
 
 def mmug_multiple_choice_results(results, args):
@@ -603,16 +633,15 @@ def mmug_multiple_choice_results(results, args):
         A score
     """
     # TODO: add a place to dump answers and results
-    # TODO: modify so that it is more fine-grained
     result_dict = dict(correct=0, answered=0)
-    
+
     for result in results:
         if result is None:
-            continue 
-        
+            continue
+
         result_dict["answered"] += 1
         result_dict["correct"] += result["pred_answer"] == result["answer"]
-        
+
     total_correct = result_dict["correct"]
     total_answered = result_dict["answered"]
 
@@ -638,7 +667,7 @@ def mmug_aggregate_results(results):
             for sub_category in SUB_CATEGORIES:
                 for task_category in TASK_CATEGORIES:
                     for audio_category in AUDIO_CATEGORIES:
-                        # if isinstance(category, list): 
+                        # if isinstance(category, list):
                         #     key = f"{video_type}_{category[0]}_{sub_category}_{task_category}_{audio_category}"
                         # else:
                         key = f"{video_type}_{category}_{sub_category}_{task_category}_{audio_category}"
@@ -646,15 +675,16 @@ def mmug_aggregate_results(results):
 
     for result in results:
         if result is None:
-            continue 
+            continue
 
         video_type = result["video_type"]
-        if isinstance(result["category"], list): 
+        if isinstance(result["category"], list):
             category = result["category"][0]
         else:
             category = result["category"]
         sub_category = result["sub_category"]
         task_category = result["task_category"]
+        audio_category = result["audio_category"]
         key = f"{video_type}_{category}_{sub_category}_{task_category}_{audio_category}"
         category2score[key]["answered"] += 1
         category2score[key]["correct"] += result["pred_answer"] == result["answer"]
@@ -711,7 +741,8 @@ def mmug_aggregate_results(results):
         total_answered += v["answered"]
     eval_logger.info(f"Overall Performance: {100 * total_correct / total_answered if total_answered > 0 else 0 : .1f}%")
     return 100 * total_correct / total_answered if total_answered > 0 else 0
-    
+
+
 def mmug_gpt_eval(result_file_path, args):
     """
     Process the result file containing predictions, score them using GPT,
@@ -765,7 +796,7 @@ def mmug_gpt_eval(result_file_path, args):
             "pred2": pred2,
         }
         evaluated_results.append(updated_dict)
-    
+
     # Save the evaluated results to a new JSON file
     with open(eval_file_path, "w") as f:
         json.dump(evaluated_results, f, indent=4)
@@ -776,11 +807,11 @@ def mmug_gpt_eval(result_file_path, args):
 def get_mmug_task(args):
     if isinstance(args.tasks, str):
         return args.tasks
-    
+
     for task in args.tasks:
         if task.startswith("mmug"):
             return task
-    
+
 
 def mmug_aggregate_submissions_consistency(results, args):
     now_date_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
@@ -796,11 +827,11 @@ def mmug_aggregate_submissions_consistency(results, args):
             continue
 
         first_dict = results[i]
-        
+
         if first_dict is None:
             processed_indices.add(i)
             continue
-        
+
         question_id = first_dict.get("question_id").split("-")[0]
 
         for j in range(i + 1, len(results)):
@@ -808,11 +839,11 @@ def mmug_aggregate_submissions_consistency(results, args):
                 continue
 
             second_dict = results[j]
-            
+
             if second_dict is None:
                 processed_indices.add(j)
                 continue
-            
+
             if question_id == second_dict.get("question_id").split("-")[0]:
                 combined_dict = dict(question_id=question_id, Q1=first_dict["question"], pred1=first_dict["pred_answer"], Q2=second_dict["question"], pred2=second_dict["pred_answer"], A=first_dict["answer"])
                 processed_indices.add(i)
@@ -871,7 +902,7 @@ def mmug_aggregate_score(results, args):
     for result_dict in results:
         if result_dict is None:
             continue
-        
+
         total_score += result_dict["score"]
         num_scores += 1
 
