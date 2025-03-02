@@ -3,6 +3,9 @@ from io import BytesIO
 from typing import List, Optional, Tuple, Union, Dict
 import PIL.Image
 
+import os
+import json
+
 import decord
 import numpy as np
 import torch
@@ -17,6 +20,10 @@ from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
 # from lmms_eval.models.model_utils.load_video import load_video_decord
+
+from torchvision import transforms as T
+import torchvision.transforms._transforms_video as VT
+
 import cv2
 from decord import VideoReader, cpu
 
@@ -25,6 +32,13 @@ try:
 except ImportError:
     eval_logger.warning("Failed to import deepseek-vl2 dependencies; Please install them via `pip install deepseek-vl2`")
 
+
+transform = T.Compose([
+            # VT.ToTensorVideo(),
+            T.Resize(224),
+            T.CenterCrop(224),
+            # VT.NormalizeVideo([0.5], [0.5]),
+])
 
 def load_pil_images(conversations: List[Dict[str, str]]) -> List[PIL.Image.Image]:
     """
@@ -70,8 +84,11 @@ def load_video_decord(video_path, max_frames_num):
     # total_frame_num = len(vr)
     uniform_sampled_frames = np.linspace(1, total_frame_num - 10, max_frames_num, dtype=int)
     frame_idx = uniform_sampled_frames.tolist()
-    # print(total_frame_num, frame_idx)
+
     spare_frames = vr.get_batch(frame_idx).asnumpy()
+    # spare_frames = torch.from_numpy(spare_frames)
+    # spare_frames = transform(spare_frames).numpy()#.transpose(1, 2, 3, 0)
+    # import pdb; pdb.set_trace()
     return spare_frames  # (frames, height, width, channels)
 
 
@@ -117,25 +134,19 @@ class DeepSeek_VL2(lmms):
         batch_size: Optional[Union[int, str]] = 1,
         use_cache: bool = True,
         max_pixels: int = 12845056,
-        max_num_frames: int = 6,
+        max_num_frames: int = 2,
         text_only: bool = False,
+        continual_mode: bool = True,
+        response_persistent_folder: str = "./logs/deepseek_persistent_folder",
         **kwargs,
     ) -> None:
         super().__init__()
         assert kwargs == {}, f"Unexpected kwargs: {kwargs}"
 
-        accelerator = Accelerator()
-        # if accelerator.num_processes > 1:
-        #     self._device = torch.device(f"cuda:{accelerator.local_process_index}")
-        #     # self.device_map = f"cuda:{accelerator.local_process_index}"
-        #     self.device_map = split_model(pretrained)
+        self.continual_mode = continual_mode
+        self.pretrained = pretrained
 
-        # elif accelerator.num_processes == 1 and device_map == "auto":
-        #     self._device = torch.device(device)
-        #     self.device_map = device_map
-        # else:
-        #     self._device = torch.device(f"cuda:{accelerator.local_process_index}")
-        #     self.device_map = f"cuda:{accelerator.local_process_index}"
+        accelerator = Accelerator()
 
         self._device = torch.device(f"cuda:{accelerator.local_process_index}")
         if pretrained != "deepseek-ai/deepseek-vl2-tiny":
@@ -167,23 +178,19 @@ class DeepSeek_VL2(lmms):
         self.use_cache = use_cache
         self.text_only = text_only
 
-        # if accelerator.num_processes > 1:
-        #     assert accelerator.distributed_type in [
-        #         DistributedType.FSDP,
-        #         DistributedType.MULTI_GPU,
-        #     ], "Unsupported distributed type provided. Only DDP and FSDP are supported."
-        #     if accelerator.distributed_type == DistributedType.FSDP:
-        #         self._model = accelerator.prepare(self._model)
-        #     else:
-        #         self._model = accelerator.prepare_model(self._model, evaluation_mode=True)
-        #     self.accelerator = accelerator
-        #     if self.accelerator.is_local_main_process:
-        #         eval_logger.info(f"Using {accelerator.num_processes} devices with data parallelism")
-        #     self._rank = self.accelerator.local_process_index
-        #     self._world_size = self.accelerator.num_processes
-        # else:
-        #     self._rank = 0
-        #     self._world_size = 1
+        if self.continual_mode:
+            self.response_persistent_folder = response_persistent_folder
+            if not os.path.exists(self.response_persistent_folder):
+                os.makedirs(self.response_persistent_folder)
+            self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{self.pretrained.split('/')[-1]}_response.json")
+
+        if os.path.exists(self.response_persistent_file):
+            with open(self.response_persistent_file, "r") as f:
+                self.response_cache = json.load(f)
+            self.cache_mode = "resume"
+        else:
+            self.response_cache = {}
+            self.cache_mode = "start"
 
     @property
     def config(self):
@@ -222,7 +229,7 @@ class DeepSeek_VL2(lmms):
         if isinstance(visual, str):
             if visual.endswith(('.mp4', '.avi', '.mov')):
                 frames = load_video_decord(visual, self.max_num_frames)
-                return [Image.fromarray(frame) for frame in frames]
+                return [Image.fromarray(frame).resize((224, 224)) for frame in frames]
             else:
                 return [Image.open(visual).convert("RGB")]
         elif isinstance(visual, Image.Image):
@@ -233,6 +240,9 @@ class DeepSeek_VL2(lmms):
 
     def generate_until(self, requests: List[Instance]) -> List[str]:
         res = []
+
+        def get_uuid(task, split, doc_id):
+            return f"{task}___{split}___{doc_id}"
 
         def _collate(x):
             toks = self.tokenizer.encode(x[0])
@@ -248,6 +258,16 @@ class DeepSeek_VL2(lmms):
             split = split[0]
             visuals = [doc_to_visual[0](self.task_dict[task][split][ids]) for ids in doc_id]
             visuals = self.flatten(visuals)
+
+
+            if self.continual_mode and self.cache_mode == "resume":
+                doc_uuid = get_uuid(task, split, doc_id)
+                if doc_uuid in self.response_cache:
+                    ans = self.response_cache[doc_uuid]
+                    if ans:
+                        res.append(ans)
+                        pbar.update(1)
+                        continue
 
             gen_kwargs = all_gen_kwargs[0]
             until = gen_kwargs.pop("until", [self.tokenizer.eos_token])
@@ -266,7 +286,7 @@ class DeepSeek_VL2(lmms):
                 for idx, img in enumerate(processed_images):
                     if isinstance(img, Image.Image):
                         # Save PIL Image to temporary file
-                        temp_file = f"/home/liuyuex/benchmark/lmms-eval/multi_image_{idx}.jpg"
+                        temp_file = f"/workspace/lmms-eval/multi_image_{idx}.jpg"
                         # img.save(temp_file)
                         image_paths.append(temp_file)
                     elif isinstance(img, str):
@@ -314,21 +334,18 @@ class DeepSeek_VL2(lmms):
                 except Exception as e:
                     eval_logger.error(f"Processing error: {e}")
 
-            # print("model generating")
-            # Generate responses
-                   # Batch processing
-            # print(inputs_list)
-            # import pdb; pdb.set_trace()
-            # batch_inputs = {
-            #     "input_ids": torch.cat([x.input_ids for x in inputs_list]),
-            #     "attention_mask": torch.cat([x.attention_mask for x in inputs_list]),
-            #     "images": torch.cat([x.images for x in inputs_list]),
-            #     "images_seq_mask": torch.cat([x.images_seq_mask for x in inputs_list]),
-            #     "images_spatial_crop": torch.cat([x.images_spatial_crop for x in inputs_list]),
-            # }
-            
             inputs_embeds = self.model.prepare_inputs_embeds(**inputs)
             past_key_values = None
+
+            inputs_embeds, past_key_values = self.model.incremental_prefilling(
+                input_ids=inputs.input_ids,
+                images=inputs.images,
+                images_seq_mask=inputs.images_seq_mask,
+                images_spatial_crop=inputs.images_spatial_crop,
+                attention_mask=inputs.attention_mask,
+                chunk_size=512 # prefilling size
+            )
+
             outputs = self.model.generate(
                     inputs_embeds=inputs_embeds,
                     input_ids=inputs.input_ids,
@@ -347,29 +364,19 @@ class DeepSeek_VL2(lmms):
                     repetition_penalty=1.1,
                     use_cache=True,)
 
-            # outputs = self.model.generate(
-            #         inputs_embeds=inputs_embeds,
-            #         input_ids=batch_inputs['input_ids'],
-            #         images=batch_inputs['images'],
-            #         images_seq_mask=batch_inputs['images_seq_mask'],
-            #         images_spatial_crop=batch_inputs['images_spatial_crop'],
-            #         attention_mask=batch_inputs['attention_mask'],
-            #         past_key_values=past_key_values,
-            #         pad_token_id=self.tokenizer.eos_token_id,
-            #         bos_token_id=self.tokenizer.bos_token_id,
-            #         eos_token_id=self.tokenizer.eos_token_id,
-            #         max_new_tokens=512,
-            #         do_sample=True,
-            #         temperature=0.4,
-            #         top_p=0.9,
-            #         repetition_penalty=1.1,
-            #         use_cache=True,)
+            # answers =self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-            answers =self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            answers =self.tokenizer.decode(outputs[0][len(inputs.input_ids[0]):].cpu().tolist(), skip_special_tokens=True)
+            # import pdb; pdb.set_trace()
 
-            # answers =self.tokenizer.decode(outputs[0][len(inputs.input_ids[0]):].cpu().tolist(), skip_special_tokens=True)
             res.append(answers)
             pbar.update(1)
+
+            if self.continual_mode is True:  # Cache the response
+                doc_uuid = get_uuid(task, split, doc_id)
+                self.response_cache[doc_uuid] = answers
+                with open(self.response_persistent_file, "w") as f:
+                    json.dump(self.response_cache, f)
 
         res = re_ords.get_original(res)
         pbar.close()
