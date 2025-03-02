@@ -1,0 +1,8 @@
+task: mmug_all
+test_split: test
+doc_to_visual: !function utils.mmug_doc_to_audiovisual
+doc_to_text: !function utils.mmug_doc_to_text_subtitle
+include: _default_template_yaml
+lmms_eval_specific_kwargs:
+  gemini_api:
+    all_subtitles: True

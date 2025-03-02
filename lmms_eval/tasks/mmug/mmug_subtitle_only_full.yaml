@@ -1,0 +1,4 @@
+task: mmug_subtitle_only_full
+test_split: test
+doc_to_text: !function utils.mmug_doc_to_text_subtitle_full
+include: _default_template_yaml

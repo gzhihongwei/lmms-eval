@@ -152,8 +152,6 @@ def mmug_doc_to_visual_builder(sub_dir):
         video_path = os.path.join(cache_dir, sub_dir, video_path)
         if os.path.exists(video_path):
             video_path = video_path
-        elif os.path.exists(video_path.replace(".mp4", "_0.mp4")):
-            video_path = video_path.replace(".mp4", "_0.mp4")
         else:
             sys.exit(f'video path: "{video_path}" does not exist, please check')
 
@@ -163,21 +161,28 @@ def mmug_doc_to_visual_builder(sub_dir):
 
 
 mmug_doc_to_visual = mmug_doc_to_visual_builder("vid_only")
+mmug_doc_to_visual_full = mmug_doc_to_visual_builder("vid_only_full")
 mmug_doc_to_audiovisual = mmug_doc_to_visual_builder("vid")
+mmug_doc_to_audiovisual_full = mmug_doc_to_visual_builder("vid_full")
 
 
-def mmug_doc_to_audio(doc):
-    cache_dir = os.path.join(base_cache_dir, cache_name)
-    audio_path = doc["videoID"] + ".mp3"
-    audio_path = os.path.join(cache_dir, "audio_only", audio_path)
-    if os.path.exists(audio_path):
-        audio_path = audio_path
-    elif os.path.exists(audio_path.replace(".mp3", "_0.mp3")):
-        audio_path = audio_path.replace(".mp3", "_0.mp3")
-    else:
-        sys.exit(f'video path: "{audio_path}" does not exist, please check')
+def mmug_doc_to_audio_builder(sub_dir):
+    def helper(doc):
+        cache_dir = os.path.join(base_cache_dir, cache_name)
+        audio_path = doc["videoID"] + ".mp3"
+        audio_path = os.path.join(cache_dir, sub_dir, audio_path)
+        if os.path.exists(audio_path):
+            audio_path = audio_path
+        else:
+            sys.exit(f'video path: "{audio_path}" does not exist, please check')
 
-    return [audio_path]
+        return [audio_path]
+
+    return helper
+
+
+mmug_doc_to_audio = mmug_doc_to_audio_builder("audio_only")
+mmug_doc_to_audio_full = mmug_doc_to_audio_builder("audio_only_full")
 
 
 def mmug_doc_to_text(doc, lmms_eval_specific_kwargs=None):
@@ -211,61 +216,68 @@ def mmug_doc_to_text(doc, lmms_eval_specific_kwargs=None):
 # The best answer is:
 
 
-def mmug_doc_to_text_subtitle(doc, lmms_eval_specific_kwargs=None):
-    cache_dir = os.path.join(base_cache_dir, cache_name)
-    video_path = os.path.join(cache_dir, "vid", doc["videoID"] + ".mp4")
-    subtitle_path = os.path.join(cache_dir, "subtitle", doc["videoID"] + ".srt")
-    if os.path.exists(subtitle_path):  # Denote have subtitle
-        subtitle = open(subtitle_path).read().splitlines()
-    else:
-        subtitle = ""
-    # import pdb; pdb.set_trace()
-    subtitles_prompt = "This video's subtitles are listed below:\n"
-    if not subtitle:
-        subtitle = "No subtitles available"
-    else:
-        if "all_subtitles" in lmms_eval_specific_kwargs:  # api models
-            # Filter empty strings out
-            subtitle = list(filter(len, subtitle))
-            textlist = subtitle[2::3]
-
-            subtitle_text = "\n".join(textlist)
+def mmug_doc_to_text_subtitle_builder(sub_dir_suffix):
+    def helper(doc, lmms_eval_specific_kwargs=None):
+        cache_dir = os.path.join(base_cache_dir, cache_name)
+        video_path = os.path.join(cache_dir, f"vid{sub_dir_suffix}", doc["videoID"] + ".mp4")
+        subtitle_path = os.path.join(cache_dir, f"subtitle{sub_dir_suffix}", doc["videoID"] + ".srt")
+        if os.path.exists(subtitle_path):  # Denote have subtitle
+            subtitle = open(subtitle_path).read().splitlines()
         else:
-            if "frame_num" in lmms_eval_specific_kwargs:
-                frame_num = lmms_eval_specific_kwargs["frame_num"]
-                subtitle_by_frame, total_frame = extract_subtitles(video_path, subtitle_path)
-                if frame_num == -1:
-                    frame_num = total_frame
-                uniform_sampled_frames = np.linspace(0, total_frame - 1, frame_num, dtype=int).tolist()
+            subtitle = ""
+        # import pdb; pdb.set_trace()
+        subtitles_prompt = "This video's subtitles are listed below:\n"
+        if not subtitle:
+            subtitle = "No subtitles available"
+        else:
+            if "all_subtitles" in lmms_eval_specific_kwargs:  # api models
+                # Filter empty strings out
+                subtitle = list(filter(len, subtitle))
+                textlist = subtitle[2::3]
 
-                subtitle_by_frame_idx = []
-                for frame_idx in uniform_sampled_frames:
-                    for idx, title in enumerate(subtitle_by_frame):
-                        if frame_idx < title[1] and frame_idx >= title[0]:
-                            subtitle_by_frame_idx.append(idx)
-                subtitle_by_frame_idx = list(set(subtitle_by_frame_idx))
-
-                textlist = []
-                for idx in subtitle_by_frame_idx:
-                    textlist.append(subtitle_by_frame[idx][2])
                 subtitle_text = "\n".join(textlist)
-        subtitle = subtitle_text
+            else:
+                if "frame_num" in lmms_eval_specific_kwargs:
+                    frame_num = lmms_eval_specific_kwargs["frame_num"]
+                    subtitle_by_frame, total_frame = extract_subtitles(video_path, subtitle_path)
+                    if frame_num == -1:
+                        frame_num = total_frame
+                    uniform_sampled_frames = np.linspace(0, total_frame - 1, frame_num, dtype=int).tolist()
 
-    post_prompts = (lmms_eval_specific_kwargs or {}).get("post_prompt", "$").split("$")
-    question = doc["question"]
+                    subtitle_by_frame_idx = []
+                    for frame_idx in uniform_sampled_frames:
+                        for idx, title in enumerate(subtitle_by_frame):
+                            if frame_idx < title[1] and frame_idx >= title[0]:
+                                subtitle_by_frame_idx.append(idx)
+                    subtitle_by_frame_idx = list(set(subtitle_by_frame_idx))
 
-    if doc["question_id"].endswith("-1"):
-        option_prompt = "Select the best answer to the following multiple-choice question based on the video and the subtitles. Respond with only the letter (A, B, C, D, E, F, G, or H) of the correct option."
-        options = "\n".join(doc["options"])
-        question = question + "\n" + options
-        post_prompt = post_prompts[0] or " The best answer is:"
-        full_prompt = subtitles_prompt + subtitle + "\n" + option_prompt + "\n" + question + "\n" + post_prompt
-        return full_prompt
+                    textlist = []
+                    for idx in subtitle_by_frame_idx:
+                        textlist.append(subtitle_by_frame[idx][2])
+                    subtitle_text = "\n".join(textlist)
+            subtitle = subtitle_text
 
-    # TODO: fine tune these pre and post prompts
-    pre_prompt = (lmms_eval_specific_kwargs or {}).get("pre_prompt", "")
-    post_prompt = post_prompts[1] or " The answer is:"
-    return f"{subtitles_prompt}{subtitle}\n{pre_prompt}{question}{post_prompt}"
+        post_prompts = (lmms_eval_specific_kwargs or {}).get("post_prompt", "$").split("$")
+        question = doc["question"]
+
+        if doc["question_id"].endswith("-1"):
+            option_prompt = "Select the best answer to the following multiple-choice question based on the video and the subtitles. Respond with only the letter (A, B, C, D, E, F, G, or H) of the correct option."
+            options = "\n".join(doc["options"])
+            question = question + "\n" + options
+            post_prompt = post_prompts[0] or " The best answer is:"
+            full_prompt = subtitles_prompt + subtitle + "\n" + option_prompt + "\n" + question + "\n" + post_prompt
+            return full_prompt
+
+        # TODO: fine tune these pre and post prompts
+        pre_prompt = (lmms_eval_specific_kwargs or {}).get("pre_prompt", "")
+        post_prompt = post_prompts[1] or " The answer is:"
+        return f"{subtitles_prompt}{subtitle}\n{pre_prompt}{question}{post_prompt}"
+
+    return helper
+
+
+mmug_doc_to_text_subtitle = mmug_doc_to_text_subtitle_builder("")
+mmug_doc_to_text_subtitle_full = mmug_doc_to_text_subtitle_builder("_full")
 
 
 def mmug_doc_to_text_wo_subtitle(doc, lmms_eval_specific_kwargs=None):
@@ -537,6 +549,7 @@ def extract_characters_regex(s):
     if len(s.split()) > 10 and not re.search("[ABCDEFGH]", s):
         return ""
 
+    matches = re.search(r"[ABCDEFGH]", s)
     matches = re.search(r"[ABCDEFGH]", s)
     if matches is None:
         return ""

@@ -1,5 +1,5 @@
-task: mmug_wo_subtitle
+task: mmug_wo_subtitle_full
 test_split: test
-doc_to_visual: !function utils.mmug_doc_to_visual
+doc_to_visual: !function utils.mmug_doc_to_visual_full
 doc_to_text: !function utils.mmug_doc_to_text_wo_subtitle
 include: _default_template_yaml
