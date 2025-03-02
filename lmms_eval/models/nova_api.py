@@ -42,6 +42,8 @@ class NovaAPI(lmms):
     def __init__(
         self,
         model_version: str = "us.amazon.nova-lite-v1:0",
+        continual_mode: bool = True,
+        response_persistent_folder: str = "./logs/nova_persistent_folder",
         # modality: str = "image",
         # We will cache the Gemini API response in this path and use it for future requests
         **kwargs,
@@ -50,6 +52,22 @@ class NovaAPI(lmms):
         self.model_version = model_version
         self.model = partial(client.invoke_model, modelId=model_version)
         # self.modality = modality
+        self.continual_mode = continual_mode
+
+        if self.continual_mode:
+            self.response_persistent_folder = response_persistent_folder
+            if not os.path.exists(self.response_persistent_folder):
+                os.makedirs(self.response_persistent_folder)
+            # import pdb; pdb.set_trace()
+            self.response_persistent_file = os.path.join(self.response_persistent_folder, f"{self.model_version.split('/')[-1]}_response.json")
+
+        if os.path.exists(self.response_persistent_file):
+            with open(self.response_persistent_file, "r") as f:
+                self.response_cache = json.load(f)
+            self.cache_mode = "resume"
+        else:
+            self.response_cache = {}
+            self.cache_mode = "start"
 
     def flatten(self, input):
         new_list = []
@@ -79,10 +97,25 @@ class NovaAPI(lmms):
         return images
 
     def generate_until(self, requests) -> List[str]:
+
+        def get_uuid(task, split, doc_id):
+            return f"{task}___{split}___{doc_id}"
+
+
         res = []
         pbar = tqdm(total=len(requests), disable=(self.rank != 0), desc="Model Responding")
 
         for contexts, gen_kwargs, doc_to_visual, doc_id, task, split in [reg.args for reg in requests]:
+
+            if self.continual_mode and self.cache_mode == "resume":
+                doc_uuid = get_uuid(task, split, doc_id)
+                if doc_uuid in self.response_cache:
+                    ans = self.response_cache[doc_uuid]
+                    if ans:
+                        res.append(ans)
+                        pbar.update(1)
+                        continue
+
             if "max_new_tokens" not in gen_kwargs:
                 gen_kwargs["max_new_tokens"] = 1024
             if "temperature" not in gen_kwargs:
@@ -145,8 +178,14 @@ class NovaAPI(lmms):
                     else:  # If this was the last attempt, log and return empty
                         eval_logger.error(f"All 1 attempts failed. Last error message: {str(e)}")
                         content = ""
+                content = ""
             res.append(content)
             pbar.update(1)
+
+            doc_uuid = get_uuid(task, split, doc_id)
+            self.response_cache[doc_uuid] = content
+            with open(self.response_persistent_file, "w") as f:
+                json.dump(self.response_cache, f)
 
         pbar.close()
         return res
