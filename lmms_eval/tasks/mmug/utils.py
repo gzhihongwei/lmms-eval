@@ -534,10 +534,10 @@ def extract_characters_regex(s):
     for answer_prefix in answer_prefixes:
         s = s.replace(answer_prefix, "")
 
-    if len(s.split()) > 10 and not re.search("[ABCD]", s):
+    if len(s.split()) > 10 and not re.search("[ABCDEFGH]", s):
         return ""
 
-    matches = re.search(r"[ABCD]", s)
+    matches = re.search(r"[ABCDEFGH]", s)
     if matches is None:
         return ""
     return matches[0]
