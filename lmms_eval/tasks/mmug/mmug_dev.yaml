@@ -39,3 +39,6 @@ lmms_eval_specific_kwargs:
 
   internvl2:
     all_subtitles: True
+
+  qwen2_5_omni:
+    all_subtitles: True
