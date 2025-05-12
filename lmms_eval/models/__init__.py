@@ -42,6 +42,7 @@ AVAILABLE_MODELS = {
     "qwen2_vl": "Qwen2_VL",
     "qwen2_audio": "Qwen2_Audio",
     "qwen_vl_api": "Qwen_VL_API",
+    "qwen2_5_omni": "Qwen2_5_Omni",
     "reka": "Reka",
     "srt_api": "SRT_API",
     "tinyllava": "TinyLlava",
