@@ -1,7 +1,8 @@
 import base64
 from io import BytesIO
 from typing import List, Optional, Tuple, Union
-
+import os
+import json
 import audioread
 import av
 import decord
@@ -45,18 +46,21 @@ class Qwen2_5_Omni(lmms):
         device_map: Optional[str] = "auto",
         batch_size: Optional[Union[int, str]] = 1,
         use_cache=True,
-        attn_implementation: Optional[bool] = "eager",
-        max_num_frames: int = 768,
+        attn_implementation: Optional[bool] = "flash_attention_2",
+        max_num_frames: int = 356, #768
         use_custom_video_loader: Optional[bool] = False,
         fps: Optional[float] = None,  # Only applicable if use_custom_video_loader is True
         max_image_size: Optional[int] = None,  # Only applicable if use_custom_video_loader is True
         system_prompt: str = "You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, capable of perceiving auditory and visual inputs, as well as generating text and speech.",
         response_persistent_folder: str = "./logs/qwen25_omni_persistent_folder",
+        continual_mode: bool = True,
         **kwargs,
     ) -> None:
         super().__init__()
         # Do not use kwargs for now
         assert kwargs == {}, f"Unexpected kwargs: {kwargs}"
+        self.continual_mode = continual_mode
+        self.pretrained = pretrained
 
         self.use_custom_video_loader = use_custom_video_loader
         self.fps = fps
@@ -243,7 +247,7 @@ class Qwen2_5_Omni(lmms):
                             message.append({"role": "user", "content": [{"type": "video", "video": image_contents}, {"type": "text", "text": context}]})
                         else:  # Model video loader
                             message.append({"role": "user", "content": [{"type": "video", "video": visual}, {"type": "text", "text": context}]})
-
+                        # import pdb; pdb.set_trace()
                     elif isinstance(visual, Image.Image):  # Single image
                         message.append({"role": "user", "content": [{"type": "image", "image": visual}, {"type": "text", "text": context}]})
 
