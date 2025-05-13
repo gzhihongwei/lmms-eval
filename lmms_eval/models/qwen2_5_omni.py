@@ -197,6 +197,9 @@ class Qwen2_5_Omni(lmms):
         res = []
         current_use_audio = False  # Flag to check whether we are using video or not
 
+        def get_uuid(task, split, doc_id):
+            return f"{task}___{split}___{doc_id}"
+
         def _collate(x):
             # the negative sign on len(toks) sorts descending - this has a few advantages:
             # - time estimates will always be over not underestimates, which is more useful for planning
@@ -220,6 +223,15 @@ class Qwen2_5_Omni(lmms):
             visuals = [doc_to_visual[0](self.task_dict[task][split][ids]) for ids in doc_id]
             visuals = self.flatten(visuals)
 
+            if self.continual_mode and self.cache_mode == "resume":
+                doc_uuid = get_uuid(task, split, doc_id)
+                if doc_uuid in self.response_cache:
+                    ans = self.response_cache[doc_uuid]
+                    if ans:
+                        res.append(ans)
+                        pbar.update(1)
+                        continue
+                        
             gen_kwargs = all_gen_kwargs[0]
 
             # Set default values for until and max_new_tokens
