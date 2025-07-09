@@ -6,3 +6,7 @@ include: _default_template_yaml
 lmms_eval_specific_kwargs:
   gemini_api:
     all_subtitles: True
+  ola:
+    all_subtitles: True
+  egogpt:
+    all_subtitles: True
