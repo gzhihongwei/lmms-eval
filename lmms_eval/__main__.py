@@ -354,6 +354,8 @@ def cli_evaluate(args: Union[argparse.Namespace, None] = None) -> None:
         if results is not None:
             print(f"{args.model} ({args.model_args}), gen_kwargs: ({args.gen_kwargs}), limit: {args.limit}, num_fewshot: {args.num_fewshot}, " f"batch_size: {args.batch_size}")
             print(make_table(results))
+            with open(f"{args.output_path}/results.txt", "w") as f:
+                f.write(make_table(results))
             if "groups" in results:
                 print(make_table(results, "groups"))
 
@@ -376,7 +378,7 @@ def cli_evaluate_single(args: Union[argparse.Namespace, None] = None) -> None:
 
     evaluation_tracker_args = simple_parse_args_string(args.hf_hub_log_args)
     eval_logger.info(f"Evaluation tracker args: {evaluation_tracker_args}")
-
+    evaluation_tracker_args.update({"log_samples_suffix": args.log_samples_suffix})
     evaluation_tracker = EvaluationTracker(**evaluation_tracker_args)
 
     if args.predict_only:

@@ -671,7 +671,10 @@ def mmug_aggregate_results(results):
         A score
     """
     now_date_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    eval_file_name = f"eval_result_{now_date_time}.log"
+    model = os.environ.get("MODEL")
+    task = os.environ.get("TASK")
+    outdir = os.environ.get("OUTDIR")
+    eval_file_name = f"{outdir}/{task}/eval_result_{model}_{task}_{now_date_time}.log"
     eval_logger.add(eval_file_name)
 
     category2score = {}

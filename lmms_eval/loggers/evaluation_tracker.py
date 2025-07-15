@@ -118,6 +118,7 @@ class EvaluationTracker:
         leaderboard_url: str = "",
         point_of_contact: str = "",
         gated: bool = False,
+        log_samples_suffix: str = "default",
     ) -> None:
         """
         Creates all the necessary loggers for evaluation tracking.
@@ -146,6 +147,7 @@ class EvaluationTracker:
         self.point_of_contact = point_of_contact
         self.api = HfApi(token=token) if token else None
         self.gated_repo = gated
+        self.log_samples_suffix = log_samples_suffix
 
         if not self.api and (push_results_to_hub or push_samples_to_hub):
             raise ValueError("Hugging Face token is not defined, but 'push_results_to_hub' or 'push_samples_to_hub' is set to True. " "Please provide a valid Hugging Face token by setting the HF_TOKEN environment variable.")
@@ -209,7 +211,7 @@ class EvaluationTracker:
                 path.mkdir(parents=True, exist_ok=True)
 
                 self.date_id = datetime_str.replace(":", "-")
-                file_results_aggregated = path.joinpath(f"{self.date_id}_results.json")
+                file_results_aggregated = path.joinpath(f"{self.date_id}_{self.log_samples_suffix}_results.json")
                 file_results_aggregated.open("w", encoding="utf-8").write(dumped)
 
                 if self.api and self.push_results_to_hub:
@@ -258,7 +260,7 @@ class EvaluationTracker:
                 path = path.joinpath(self.general_config_tracker.model_name_sanitized)
                 path.mkdir(parents=True, exist_ok=True)
 
-                file_results_samples = path.joinpath(f"{self.date_id}_samples_{task_name}.jsonl")
+                file_results_samples = path.joinpath(f"{self.date_id}_samples_{self.log_samples_suffix}.jsonl")
 
                 for sample in samples:
                     # we first need to sanitize arguments and resps

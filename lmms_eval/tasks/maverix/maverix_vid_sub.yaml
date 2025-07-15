@@ -1,4 +1,4 @@
-task: mmug_wo_subtitle
+task: maverix_vid_sub
 test_split: test
 doc_to_visual: !function utils.mmug_doc_to_visual
 doc_to_text: !function utils.mmug_doc_to_text_subtitle
