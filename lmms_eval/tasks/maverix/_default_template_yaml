@@ -1,8 +1,8 @@
 # dataset_path: CUBE-CMU/MMUG
-dataset_path: CUBE-CMU/MAVEN
+dataset_path: C
 dataset_kwargs:
   token: True
-  cache_dir: maven-new
+  cache_dir: maverix
   video: True
   # force_unzip: True
   # force_download: True

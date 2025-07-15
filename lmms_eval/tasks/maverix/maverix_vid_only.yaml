@@ -1,7 +1,7 @@
-task: mmug_dev
+task: maverix_vid_only
 test_split: test
 doc_to_visual: !function utils.mmug_doc_to_visual
-doc_to_text: !function utils.mmug_doc_to_text_subtitle
+doc_to_text: !function utils.mmug_doc_to_text_wo_subtitle
 include: _default_template_yaml
 lmms_eval_specific_kwargs:
   gemini_api:
@@ -41,4 +41,13 @@ lmms_eval_specific_kwargs:
     all_subtitles: True
 
   qwen2_5_omni:
+    all_subtitles: True
+
+  ola:
+    all_subtitles: True
+
+  egogpt:
+    all_subtitles: True
+    
+  vita:
     all_subtitles: True

@@ -5,7 +5,7 @@
 # python3 -m accelerate.commands.launch \
 #         --num_processes=1 \
 
-MODEL="egogpt"
+MODEL="ola"
 
 torchrun --nproc_per_node=1 -m lmms_eval \
         --model $MODEL \

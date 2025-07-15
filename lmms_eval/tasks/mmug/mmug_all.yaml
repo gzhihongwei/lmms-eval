@@ -10,3 +10,5 @@ lmms_eval_specific_kwargs:
     all_subtitles: True
   egogpt:
     all_subtitles: True
+  vita:
+    all_subtitles: True
