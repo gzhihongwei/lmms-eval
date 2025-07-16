@@ -126,7 +126,8 @@ class GPT4V(lmms):
 
         base64_frames = []
         for frame in frames:
-            img = Image.fromarray(frame)
+            # img = Image.fromarray(frame)
+            img = Image.fromarray(frame.to_ndarray(format='rgb24'))
             output_buffer = BytesIO()
             img.save(output_buffer, format="PNG")
             byte_data = output_buffer.getvalue()

@@ -51,3 +51,6 @@ lmms_eval_specific_kwargs:
     
   vita:
     all_subtitles: True
+
+  gpt4o-mini:
+    all_subtitles: True

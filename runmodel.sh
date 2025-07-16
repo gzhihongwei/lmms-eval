@@ -6,7 +6,7 @@
 #         --num_processes=1 \
 
 export MODEL="ola"
-export TASK="vid_audio"
+export TASK="vid_sub"
 export OUTDIR="logs/logs_$MODEL"
 torchrun --nproc_per_node=1 -m lmms_eval \
         --model $MODEL \

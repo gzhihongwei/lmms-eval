@@ -1,5 +1,4 @@
-# dataset_path: CUBE-CMU/MMUG
-dataset_path: C
+dataset_path: CUBE-CMU/maverix
 dataset_kwargs:
   token: True
   cache_dir: maverix
