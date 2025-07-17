@@ -47,3 +47,5 @@ final_outputs/
 *.pt
 
 scripts/
+*jsonl
+*data.csv

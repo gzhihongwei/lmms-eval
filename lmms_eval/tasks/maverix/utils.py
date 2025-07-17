@@ -606,7 +606,7 @@ def mmug_process_results(doc, results):
     sub_category = doc["sub_category"]
     task_category = doc["task_type"]
     audio_category = doc["audio_category"]
-    video_type = doc["task_type"]
+    video_type = doc["video_type"]
     data_dict = {
         "question_id": doc["question_id"],
         "duration": doc["duration"],

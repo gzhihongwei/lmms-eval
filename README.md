@@ -1,3 +1,6 @@
+### Remember to set `continual_mode` and `response_persistent_folder` to newly added models
+
+
 <p align="center" width="80%">
 <img src="https://i.postimg.cc/KvkLzbF9/WX20241212-014400-2x.png"  width="100%" height="70%">
 </p>

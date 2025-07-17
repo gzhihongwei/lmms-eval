@@ -48,12 +48,12 @@ elif API_TYPE == "azure":
 class GPT4V(lmms):
     def __init__(
         self,
-        model_version: str = "gpt-4o",
+        model_version: str = "gpt-4o-mini",
         modality: str = "video",
         max_frames_num: int = 10,
         timeout: int = 120,
-        continual_mode: bool = False,
-        response_persistent_folder: str = None,
+        continual_mode: bool = True,
+        response_persistent_folder: str = "logs/gpt4v_response_cache",
         **kwargs,
     ) -> None:
         super().__init__()

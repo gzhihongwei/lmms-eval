@@ -5,7 +5,7 @@
 # python3 -m accelerate.commands.launch \
 #         --num_processes=1 \
 
-export MODEL="ola"
+export MODEL="gpt4v"
 export TASK="vid_sub"
 export OUTDIR="logs/logs_$MODEL"
 torchrun --nproc_per_node=1 -m lmms_eval \
@@ -15,5 +15,5 @@ torchrun --nproc_per_node=1 -m lmms_eval \
         --log_samples \
         --log_samples_suffix maverix_${MODEL}_${TASK} \
         --output_path ./$OUTDIR/${TASK}/ \
-        --limit 2 \
-        --verbosity=DEBUG
+        # --limit 20 \
+        # --verbosity=DEBUG
