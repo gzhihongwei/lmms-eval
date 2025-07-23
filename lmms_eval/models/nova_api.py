@@ -18,23 +18,28 @@ from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
 
-try:
-    import boto3
-    
-    AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-    AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-    
-    client = boto3.client(
-        "bedrock-runtime",
-        region_name="us-east-1",
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    )
+# try:
+import boto3
 
-    NUM_SECONDS_TO_SLEEP = 30
-except Exception as e:
-    eval_logger.error(f"Error importing boto3: {str(e)}")
-    genai = None
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+
+from botocore.config import Config
+
+config = Config(read_timeout=1000)
+
+client = boto3.client(
+    "bedrock-runtime",
+    region_name="us-east-2",
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    config=config
+)
+
+NUM_SECONDS_TO_SLEEP = 30
+# except Exception as e:
+#     eval_logger.error(f"Error importing boto3: {str(e)}")
+#     genai = None
 
 
 @register_model("nova_api")
@@ -43,7 +48,8 @@ class NovaAPI(lmms):
         self,
         model_version: str = "us.amazon.nova-lite-v1:0",
         continual_mode: bool = True,
-        response_persistent_folder: str = "./logs/nova_persistent_folder",
+        response_persistent_folder: str = "logs/nova_pers_vid_only",
+        # response_persistent_folder: str = "../louiselogs/nova_persistent_folder",
         # modality: str = "image",
         # We will cache the Gemini API response in this path and use it for future requests
         **kwargs,
@@ -126,7 +132,7 @@ class NovaAPI(lmms):
             inference_config = {key: value for key, value in gen_kwargs.items() if key in inference_config_allowed_keys}
 
             visuals = [doc_to_visual(self.task_dict[task][split][doc_id])]
-            visuals = self.flatten(visuals)
+            visuals = self.flatten(visuals) if visuals[0] is not None else visuals
             # TODO: need a way to determine if it is an image or video
 
             # visuals = self.convert_modality(visuals)
@@ -139,6 +145,7 @@ class NovaAPI(lmms):
             # FIXME: assuming video for now
             for visual in visuals:
                 visual = "s3://maven-cmu/MAVEN-dataset/vid/" + visual.split('/')[-1]
+                # visual = "s3://maven-cmu/MAVEN-dataset/blank_video.mp4"
                 messages[0]["content"].append({"video": {"format": 'mp4', "source": {"s3Location": {"uri": visual}}}})
             messages[0]["content"].append({"text": contexts})
             
@@ -154,7 +161,7 @@ class NovaAPI(lmms):
                 "inferenceConfig": inference_config
             }
 
-            for attempt in range(1):
+            for attempt in range(5):
                 try:
                     response = self.model(body=json.dumps(native_request))
                     model_response = json.loads(response["body"].read())

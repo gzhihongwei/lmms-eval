@@ -3,6 +3,7 @@ import os
 import warnings
 from datetime import timedelta
 from typing import List, Optional, Tuple, Union
+import gc
 
 import numpy as np
 import soundfile as sf
@@ -227,6 +228,9 @@ class VITA(lmms):
 
     def generate_until(self, requests: List[Instance]) -> List[str]:
         res = []
+        MODALITY = "audio"
+        assert MODALITY in ["video_audio", "video", "audio", "video_sub", "sub"], f"Unsupported modality: {MODALITY}"
+        print("USING MODALITY:", MODALITY)
 
         def _collate(x):
             # the negative sign on len(toks) sorts descending - this has a few advantages:
@@ -244,23 +248,24 @@ class VITA(lmms):
         # in the same batch.
         re_ords = utils.Collator([reg.args for reg in requests], _collate, grouping=True)
         chunks = re_ords.get_batched(n=self.batch_size, batch_fn=None)
-
+        vitamodality = "lang"
+        count = 0
         for chunk in chunks:
             contexts, all_gen_kwargs, doc_to_visual, doc_id, task, split = zip(*chunk)
             task = task[0]
             split = split[0]
             visuals = [doc_to_visual[0](self.task_dict[task][split][ids]) for ids in doc_id]
-            visuals = self.flatten(visuals)
+            visuals = self.flatten(visuals) if visuals[0] is not None else visuals
 
             gen_kwargs = all_gen_kwargs[0]
 
             prompts_input = contexts[0] if isinstance(contexts, list) or isinstance(contexts, tuple) else contexts
 
             audios = None
+            HAS_VIDEO, HAS_AUDIO = False, False
             for visual in visuals:
-                print(type(visual))
-                exit()
-                if isinstance(visual, str):
+                # if isinstance(visual, str):
+                if MODALITY == "video_audio" or MODALITY == "video" or MODALITY == "video_sub":
                     video_frames, slice_len = self._get_rawvideo_dec(
                         visual,
                         self._image_processor,
@@ -271,22 +276,25 @@ class VITA(lmms):
                     image_tensor = video_frames.half().cuda()
                     # Right now in lmms eval, hasn't got input along with audio, so I keep a dummy case here
                     prompts_input = DEFAULT_IMAGE_TOKEN * slice_len + "\n" + prompts_input
-                    modality = "video"
-                elif isinstance(visual, Image.Image):
-                    image = visual
-                    if self.frameCat:
-                        image, p_num = self.dynamic_preprocess(image, min_num=2, max_num=12, image_size=448, use_thumbnail=True, img_mean=self._image_processor.image_mean)
-                    else:
-                        image, p_num = self.dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbnail=True)
-                    assert len(p_num) == 1
-                    image_tensor = self.model.process_images(image, self.model.config).to(dtype=self.model.dtype, device="cuda")
-                    # Same situation with video
-                    prompts_input = DEFAULT_IMAGE_TOKEN * p_num[0] + "\n" + prompts_input
-                    modality = "image"
-                elif isinstance(visual, dict) and "array" in visual:
-                    temp_file_name = f"temp_{self._rank}.wav"
-                    sf.write(temp_file_name, visual["array"], visual["sampling_rate"])
-                    audio, audio_for_llm_lens = self._audio_processor.process(temp_file_name)
+                    vitamodality = "video"
+                    HAS_VIDEO = True
+                # elif isinstance(visual, Image.Image):
+                #     image = visual
+                #     if self.frameCat:
+                #         image, p_num = self.dynamic_preprocess(image, min_num=2, max_num=12, image_size=448, use_thumbnail=True, img_mean=self._image_processor.image_mean)
+                #     else:
+                #         image, p_num = self.dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbnail=True)
+                #     assert len(p_num) == 1
+                #     image_tensor = self.model.process_images(image, self.model.config).to(dtype=self.model.dtype, device="cuda")
+                #     # Same situation with video
+                #     prompts_input = DEFAULT_IMAGE_TOKEN * p_num[0] + "\n" + prompts_input
+                #     modality = "image"
+                # elif isinstance(visual, dict) and "array" in visual:
+                if MODALITY == "video_audio" or MODALITY == "audio":
+                    vsplit = visual.split("/")
+                    vsplit[-2] = 'audio_only'
+                    audio_file_name = "/".join(vsplit).replace(".mp4", ".mp3")
+                    audio, audio_for_llm_lens = self._audio_processor.process(audio_file_name)
                     audio_length = audio.shape[0]
                     audio = torch.unsqueeze(audio, dim=0)
                     audio_length = torch.unsqueeze(torch.tensor(audio_length), dim=0)
@@ -295,15 +303,19 @@ class VITA(lmms):
                     audios["audios"] = audio.half().cuda()
                     audios["lengths"] = audio_length.half().cuda()
                     audios["lengths_for_llm"] = audio_for_llm_lens.cuda()
-                    image_tensor = torch.zeros((1, 3, 448, 448)).to(dtype=self.model.dtype, device="cuda")
+                    if MODALITY == "audio":
+                        image_tensor = torch.zeros((1, 3, 448, 448)).to(dtype=self.model.dtype, device="cuda")
                     prompts_input = prompts_input + DEFAULT_AUDIO_TOKEN
-                    modality = "lang"
-                    os.remove(temp_file_name)
+                    HAS_AUDIO = True
+                if MODALITY == "sub":
+                    image_tensor = torch.zeros((1, 3, 448, 448)).to(dtype=self.model.dtype, device="cuda")
+                    # prompts_input = DEFAULT_IMAGE_TOKEN * 1 + "\n" + prompts_input
+                    # vitamodality = "lang"
 
             conv = conv_templates[self.conv_template].copy()
             conv.append_message(conv.roles[0], prompts_input)
             conv.append_message(conv.roles[1], None)
-            prompt = conv.get_prompt(modality)
+            prompt = conv.get_prompt(vitamodality)
 
             if audios:
                 input_ids = tokenizer_image_audio_token(prompt, self.tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt").unsqueeze(0).cuda()
@@ -334,45 +346,53 @@ class VITA(lmms):
             if "num_beams" not in gen_kwargs:
                 gen_kwargs["num_beams"] = 1
 
-            with torch.inference_mode():
-                output_ids = self.model.generate(
-                    input_ids,
-                    images=image_tensor,
-                    audios=audios,
-                    do_sample=False,
-                    temperature=gen_kwargs["temperature"],
-                    top_p=gen_kwargs["top_p"],
-                    num_beams=gen_kwargs["num_beams"],
-                    output_scores=True,
-                    return_dict_in_generate=True,
-                    max_new_tokens=gen_kwargs["max_new_tokens"],
-                    use_cache=True,
-                    stopping_criteria=[stopping_criteria],
-                    shared_v_pid_stride=None,  # 2#16#8#4#1#None,
-                )
-            output_ids = output_ids.sequences
-            input_token_len = input_ids.shape[1]
-            if self.model_type == "mixtral-8x7b":
-                n_diff_input_output = (input_ids != output_ids[:, :input_token_len]).sum().item()
-                if n_diff_input_output > 0:
-                    print(f"[Warning] {n_diff_input_output} output_ids are not the same as the input_ids")
-                    output_ids = output_ids[:, input_token_len:]
-            outputs = self.tokenizer.batch_decode(output_ids, skip_special_tokens=False)[0]
+            print("HAS_VIDEO:", HAS_VIDEO, "HAS_AUDIO:", HAS_AUDIO)
+            try:
+                with torch.inference_mode():
+                    output_ids = self.model.generate(
+                        input_ids,
+                        images=image_tensor,
+                        audios=audios,
+                        do_sample=False,
+                        temperature=gen_kwargs["temperature"],
+                        top_p=gen_kwargs["top_p"],
+                        num_beams=gen_kwargs["num_beams"],
+                        output_scores=True,
+                        return_dict_in_generate=True,
+                        max_new_tokens=gen_kwargs["max_new_tokens"],
+                        use_cache=True,
+                        stopping_criteria=[stopping_criteria],
+                        shared_v_pid_stride=None,  # 2#16#8#4#1#None,
+                    )
+                output_ids = output_ids.sequences
+                input_token_len = input_ids.shape[1]
+                if self.model_type == "mixtral-8x7b":
+                    n_diff_input_output = (input_ids != output_ids[:, :input_token_len]).sum().item()
+                    if n_diff_input_output > 0:
+                        print(f"[Warning] {n_diff_input_output} output_ids are not the same as the input_ids")
+                        output_ids = output_ids[:, input_token_len:]
+                outputs = self.tokenizer.batch_decode(output_ids, skip_special_tokens=False)[0]
 
-            outputs = outputs.strip()
-            # Sometimes it contains a ☜, I remove it here
-            if outputs.startswith(self.tokenizer.decode(145789)):
-                outputs = outputs[len(self.tokenizer.decode(145789)) :]
-            if stop_str == "<|im_start|>":
-                actual_stop_str = "<|im_end|>"
-            else:
-                actual_stop_str = stop_str
-            if outputs.endswith(actual_stop_str):
-                outputs = outputs[: -len(actual_stop_str)]
-            outputs = outputs.strip()
+                outputs = outputs.strip()
+                # Sometimes it contains a ☜, I remove it here
+                if outputs.startswith(self.tokenizer.decode(145789)):
+                    outputs = outputs[len(self.tokenizer.decode(145789)) :]
+                if stop_str == "<|im_start|>":
+                    actual_stop_str = "<|im_end|>"
+                else:
+                    actual_stop_str = stop_str
+                if outputs.endswith(actual_stop_str):
+                    outputs = outputs[: -len(actual_stop_str)]
+                outputs = outputs.strip()
+            except Exception as e:
+                count +=1
+                print("Error during generation. Total errors:", count)
+                outputs = ""
             res.append(outputs)
             self.cache_hook.add_partial("generate_until", (prompt, gen_kwargs), outputs)
             pbar.update(1)
+            torch.cuda.empty_cache()
+            gc.collect()
 
         res = re_ords.get_original(res)
         return res

@@ -44,12 +44,12 @@ elif API_TYPE == "azure":
 class Grok2Vision(lmms):
     def __init__(
         self,
-        model_version: str = "grok-2-vision-latest",
+        model_version: str = "grok-4-0709",
         modality: str = "video",
         max_frames_num: int = 32,
         timeout: int = 120,
         continual_mode: bool = True,
-        response_persistent_folder: str = 'logs/grok2vision',
+        response_persistent_folder: str = 'logs/grok4_persistent_folder',
         **kwargs,
     ) -> None:
         super().__init__()
@@ -135,6 +135,28 @@ class Grok2Vision(lmms):
             base64_frames.append(base64_str)
 
         return base64_frames
+    
+    def encode_blank_video(self):
+        """
+        Generates a dummy 'video' with 2 black frames and encodes them to base64,
+        mimicking the output format of encode_video.
+        """
+        
+
+        # Two black frames (448x448 RGB) — same size as your transform expects
+        frame_shape = (448, 448, 3)
+        black_frame = np.zeros(frame_shape, dtype=np.uint8)
+
+        base64_frames = []
+        for _ in range(2):  # generate 2 frames
+            img = Image.fromarray(black_frame)
+            output_buffer = BytesIO()
+            img.save(output_buffer, format="JPEG")
+            byte_data = output_buffer.getvalue()
+            base64_str = base64.b64encode(byte_data).decode("utf-8")
+            base64_frames.append(f"{base64_str}")
+
+        return base64_frames
 
     def flatten(self, input):
         new_list = []
@@ -158,14 +180,15 @@ class Grok2Vision(lmms):
                         continue
 
             visuals = [doc_to_visual(self.task_dict[task][split][doc_id])]
-            visuals = self.flatten(visuals)
+            visuals = self.flatten(visuals) if visuals[0] is not None else visuals
             imgs = []  # multiple images or frames for video
             for visual in visuals:
                 if self.modality == "image":
                     img = self.encode_image(visual)
                     imgs.append(img)
                 elif self.modality == "video":
-                    frames = self.encode_video(visual, self.max_frames_num)
+                    frames = self.encode_blank_video()
+                    # frames = self.encode_video(visual, self.max_frames_num)
                     imgs.extend(frames)
 
             payload = {"messages": []}

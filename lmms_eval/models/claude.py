@@ -23,12 +23,11 @@ from loguru import logger
 
 eval_logger = logger
 
-try:
-    import anthropic
-    import numpy as np
-    from decord import VideoReader, cpu
-except Exception as e:
-    eval_logger.warning(f"Error importing claude: {e}")
+import anthropic
+import numpy as np
+from decord import VideoReader, cpu
+# except Exception as e:
+#     eval_logger.warning(f"Error importing claude: {e}")
 
 import av
 
@@ -77,7 +76,7 @@ class Claude(lmms):
         self.modality = modality
         self.max_frames_num = max_frames_num
 
-        response_persistent_folder = '/ocean/projects/cis240055p/liuyuex/benchmark/lmms-eval/logs/claude_persistent_folder'
+        response_persistent_folder = 'logs/claude_persistent_folder'
 
         self.continual_mode = continual_mode
         if self.continual_mode:
@@ -186,6 +185,28 @@ class Claude(lmms):
 
         return base64_frames
 
+    def encode_blank_video(self):
+        """
+        Generates a dummy 'video' with 2 black frames and encodes them to base64,
+        mimicking the output format of encode_video.
+        """
+        
+
+        # Two black frames (448x448 RGB) — same size as your transform expects
+        frame_shape = (448, 448, 3)
+        black_frame = np.zeros(frame_shape, dtype=np.uint8)
+
+        base64_frames = []
+        for _ in range(2):  # generate 2 frames
+            img = Image.fromarray(black_frame)
+            output_buffer = BytesIO()
+            img.save(output_buffer, format="JPEG")
+            byte_data = output_buffer.getvalue()
+            base64_str = base64.b64encode(byte_data).decode("utf-8")
+            base64_frames.append(f"{base64_str}")
+
+        return base64_frames
+
     def generate_until(self, requests) -> List[str]:
         client = anthropic.Anthropic()
 
@@ -219,7 +240,7 @@ class Claude(lmms):
                         continue
 
             visuals = [doc_to_visual(self.task_dict[task][split][doc_id])]
-            visuals = self.flatten(visuals)
+            visuals = self.flatten(visuals) if visuals[0] is not None else visuals
             imgs = []
             for visual in visuals:
                 if isinstance(visual, str) and os.path.exists(visual):  # Assuming visual is a path to a video
@@ -227,9 +248,11 @@ class Claude(lmms):
                     for img in visual:
                         imgs.append(img)
                 else:
-                    visual = self.shrink_image_to_file_size(visual)
-                    img = self.encode_image(visual)
-                    imgs.append(img)
+                    # visual = self.shrink_image_to_file_size(visual)
+                    # img = self.encode_image(visual)
+                    visual = self.encode_blank_video()
+                    for img in visual:
+                        imgs.append(img)
 
             messages = deepcopy(empty_messages)
 

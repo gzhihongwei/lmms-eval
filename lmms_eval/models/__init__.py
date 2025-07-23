@@ -73,6 +73,8 @@ AVAILABLE_MODELS = {
     "whisper": "Whisper",
     "whisper_vllm": "WhisperVllm",
     "vora": "VoRA",
+    "nova_api": "NovaAPI",
+    "grok2-vision": "Grok2Vision",
 }
 
 

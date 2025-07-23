@@ -53,7 +53,7 @@ class GPT4V(lmms):
         max_frames_num: int = 10,
         timeout: int = 120,
         continual_mode: bool = True,
-        response_persistent_folder: str = "logs/gpt4v_response_cache",
+        response_persistent_folder: str = "logs/gpt4o_response_cache_mini",
         **kwargs,
     ) -> None:
         super().__init__()
@@ -158,15 +158,16 @@ class GPT4V(lmms):
                         continue
 
             visuals = [doc_to_visual(self.task_dict[task][split][doc_id])]
-            visuals = self.flatten(visuals)
             imgs = []  # multiple images or frames for video
-            for visual in visuals:
-                if self.modality == "image":
-                    img = self.encode_image(visual)
-                    imgs.append(img)
-                elif self.modality == "video":
-                    frames = self.encode_video(visual, self.max_frames_num)
-                    imgs.extend(frames)
+            if visuals[0] is not None:
+                visuals = self.flatten(visuals)
+                for visual in visuals:
+                    if self.modality == "image":
+                        img = self.encode_image(visual)
+                        imgs.append(img)
+                    elif self.modality == "video":
+                        frames = self.encode_video(visual, self.max_frames_num)
+                        imgs.extend(frames)
 
             payload = {"messages": []}
             if API_TYPE == "openai":
@@ -211,7 +212,6 @@ class GPT4V(lmms):
             else:
                 payload["max_tokens"] = gen_kwargs["max_new_tokens"]
                 payload["temperature"] = gen_kwargs["temperature"]
-
             for attempt in range(5):
                 try:
                     response = url_requests.post(API_URL, headers=headers, json=payload, timeout=self.timeout)

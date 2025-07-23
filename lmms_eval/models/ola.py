@@ -440,7 +440,9 @@ class Ola(lmms):
         return mels, speech_length, speech_chunks, speech_wavs
 
     def generate_until(self, requests) -> List[str]:
-        MODALITY = None
+        MODALITY = "VIDEO"
+        assert MODALITY in ["AUDIO", "VIDEO", "SUBTITLE"], f"Unsupported modality: {MODALITY}. Supported modalities are AUDIO, IMAGE, VIDEO, SUBTITLE"
+        print("\n\nUsing modality:\n\n", MODALITY)
         res = []
 
         def _collate(x):
@@ -466,7 +468,7 @@ class Ola(lmms):
             split = split[0]
             context = contexts[0]
             visuals = [doc_to_visual[0](self.task_dict[task][split][ids]) for ids in doc_id]
-            visuals = self.flatten(visuals)  # Len = 1. just an audio tho
+            visuals = self.flatten(visuals) if visuals[0] is not None else visuals # Len = 1. just an audio tho
 
             speechs, speech_lengths, speech_wavs, speech_chunks = [], [], [], []
             images, images_highres = [], []  # For dummy image passed in audio modality
@@ -474,9 +476,7 @@ class Ola(lmms):
             image_tensor, image_highres_tensor = [], []  # For image
             video_processed = []  # For video only
             for visual in visuals:
-                if isinstance(visual, str):  # For Video
-                    if MODALITY is None:
-                        MODALITY = "VIDEO"
+                if MODALITY == "VIDEO":  # For Video
                     # Process audio of video
                     try:
                         video, frame_idx = self.load_video(visual, self.max_frames_num)
@@ -485,14 +485,20 @@ class Ola(lmms):
                         eval_logger.info(f"Video {visuals} can not load, check the source")
                         continue
                     audio = self.extract_audio(visual)
-                    audio.write_audiofile(f"./video_audio_{self.rank}.wav")
-                    video_audio_path = f"./video_audio_{self.rank}.wav"
-                    speech, speech_length, speech_chunk, speech_wav = self.load_audio(video_audio_path)
-                    speechs.append(speech.bfloat16().to(self.device))
-                    speech_lengths.append(speech_length.to(self.device))
-                    speech_chunks.append(speech_chunk.to(self.device))
-                    speech_wavs.append(speech_wav.to(self.device))
-                    os.remove(video_audio_path)
+                    if audio is None:               # dummy audio for vid_only mode
+                        speechs.append(torch.zeros(1, 3000, 128).bfloat16().to("cuda"))
+                        speech_lengths.append(torch.LongTensor([3000]).to("cuda"))
+                        speech_wavs.append(torch.zeros([1, 480000]).to("cuda"))
+                        speech_chunks.append(torch.LongTensor([1]).to("cuda"))
+                    else:
+                        audio.write_audiofile(f"./video_audiox_{self.rank}.wav")
+                        video_audio_path = f"./video_audiox_{self.rank}.wav"
+                        speech, speech_length, speech_chunk, speech_wav = self.load_audio(video_audio_path)
+                        speechs.append(speech.bfloat16().to(self.device))
+                        speech_lengths.append(speech_length.to(self.device))
+                        speech_chunks.append(speech_chunk.to(self.device))
+                        speech_wavs.append(speech_wav.to(self.device))
+                        os.remove(video_audio_path)
 
                     # Process images of video
                     for idx, frame in enumerate(video):
@@ -513,29 +519,36 @@ class Ola(lmms):
 
                     video_data = (video_processed, (384, 384), "video")
 
-                elif isinstance(visual, PIL.Image.Image):  # For Image
-                    if MODALITY is None:
-                        MODALITY = "IMAGE"
-                    self._image_processor.do_resize = False
-                    self._image_processor.do_center_crop = False
-                    image_sizes.append(visual.size)
-                    image_tensor_, image_highres_tensor_ = process_anyres_highres_image(visual, self._image_processor)
-                    image_tensor.append(image_tensor_)
-                    image_highres_tensor.append(image_highres_tensor_)
+                # elif isinstance(visual, PIL.Image.Image):  # For Image
+                #     if MODALITY is None:
+                #         MODALITY = "IMAGE"
+                #     self._image_processor.do_resize = False
+                #     self._image_processor.do_center_crop = False
+                #     image_sizes.append(visual.size)
+                #     image_tensor_, image_highres_tensor_ = process_anyres_highres_image(visual, self._image_processor)
+                #     image_tensor.append(image_tensor_)
+                #     image_highres_tensor.append(image_highres_tensor_)
 
-                elif isinstance(visual, dict) and "array" in visual:  # For Audio
-                    if MODALITY is None:
-                        MODALITY = "AUDIO"
-                    mels, speech_length, speech_chunk, speech_wav = self.process_audio(visual["array"], visual["sampling_rate"])
-                    speechs.append(mels.bfloat16().to(self.device))
-                    speech_lengths.append(speech_length.to(self.device))
-                    speech_chunks.append(speech_chunk.to(self.device))
-                    speech_wavs.append(speech_wav.to(self.device))
-
-                    # Processing dummy images, as required by model
+                elif MODALITY == "SUBTITLE":
+                    speechs.append(torch.zeros(1, 3000, 128).bfloat16().to("cuda"))
+                    speech_lengths.append(torch.LongTensor([3000]).to("cuda"))
+                    speech_wavs.append(torch.zeros([1, 480000]).to("cuda"))
+                    speech_chunks.append(torch.LongTensor([1]).to("cuda"))
                     images.append(torch.zeros(1, 3, 224, 224).to(dtype=torch.bfloat16, device=self.device, non_blocking=True))
                     images_highres.append(torch.zeros(1, 3, 224, 224).to(dtype=torch.bfloat16, device=self.device, non_blocking=True))
                     image_sizes.append((224, 224))
+                    
+                elif MODALITY == "AUDIO":
+                    images.append(torch.zeros(1, 3, 224, 224).to(dtype=torch.bfloat16, device=self.device, non_blocking=True))
+                    images_highres.append(torch.zeros(1, 3, 224, 224).to(dtype=torch.bfloat16, device=self.device, non_blocking=True))
+                    image_sizes.append((224, 224))
+                    speech, speech_length, speech_chunk, speech_wav = self.load_audio(visual)   #visual is audio path in audio mode
+                    speechs.append(speech.bfloat16().to(self.device))
+                    speech_lengths.append(speech_length.to(self.device))
+                    speech_chunks.append(speech_chunk.to(self.device))
+                    speech_wavs.append(speech_wav.to(self.device))
+                    # os.remove(video_audio_path)
+
 
             if not video_processed and MODALITY == "VIDEO":
                 # If video is not processed, skip the iteration

@@ -16,17 +16,17 @@ from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
 
-try:
-    import google.generativeai as genai
-    from google.generativeai.types import HarmBlockThreshold, HarmCategory
+# try:
+import google.generativeai as genai
+from google.generativeai.types import HarmBlockThreshold, HarmCategory
 
-    NUM_SECONDS_TO_SLEEP = 30
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-    genai.configure(api_key=GOOGLE_API_KEY)
+NUM_SECONDS_TO_SLEEP = 30
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+genai.configure(api_key=GOOGLE_API_KEY)
 
-except Exception as e:
-    eval_logger.error(f"Error importing generativeai: {str(e)}")
-    genai = None
+# except Exception as e:
+#     eval_logger.error(f"Error importing generativeai: {str(e)}")
+#     genai = None
 
 try:
     import soundfile as sf
@@ -38,7 +38,7 @@ except Exception as e:
 class GeminiAPI(lmms):
     def __init__(
         self,
-        model_version: str = "gemini-1.5-pro",
+        model_version: str = "gemini-2.5-flash-lite",
         # modality: str = "image",
         timeout: int = 120,
         continual_mode: bool = True,
@@ -90,7 +90,8 @@ class GeminiAPI(lmms):
         # self.modality = modality
 
         self.video_pool = []
-        self.text_only = text_only
+        # self.text_only = text_only
+        self.text_only = True    # we only have subtitle task left
 
     def free_video(self):
         for video in self.video_pool:

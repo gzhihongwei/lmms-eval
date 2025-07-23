@@ -470,6 +470,7 @@ def cli_evaluate_single(args: Union[argparse.Namespace, None] = None) -> None:
     request_caching_args = request_caching_arg_to_dict(cache_requests=args.cache_requests)
     datetime_str = utils.get_datetime_str(timezone=args.timezone)
 
+    # try:
     results = evaluator.simple_evaluate(
         model=args.model,
         model_args=args.model_args,
@@ -499,6 +500,9 @@ def cli_evaluate_single(args: Union[argparse.Namespace, None] = None) -> None:
         datetime_str=datetime_str,
         **request_caching_args,
     )
+    # except Exception as e:
+    #     print(f"Error during evaluation: {e}")
+    #     results = None
 
     if results is not None:
         if args.log_samples:

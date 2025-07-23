@@ -248,8 +248,14 @@ class EgoGPT(lmms):
         parts = [part for part in parts if part]
         return parts
 
-    def load_video(self, video_path=None, audio_path=None, max_frames_num=16, fps=1, task_name=None):
-        if audio_path is not None:
+    def load_video(self, video_path=None, audio_path=None, max_frames_num=16, fps=1, task_name=None, modality=None):
+        # if audio_path is not None:
+        has_audio=False
+        has_video=False
+        if modality == "video_audio" or modality == "audio":
+            vsplit = video_path.split("/")
+            vsplit[-2] = 'audio_only'
+            audio_path = "/".join(vsplit).replace(".mp4", ".mp3")
             speech, sample_rate = sf.read(audio_path)
             if sample_rate != 16000:
                 target_length = int(len(speech) * 16000 / sample_rate)
@@ -260,29 +266,39 @@ class EgoGPT(lmms):
             speech = whisper.pad_or_trim(speech.astype(np.float32))
             speech = whisper.log_mel_spectrogram(speech, n_mels=128).permute(1, 0)
             speech_lengths = torch.LongTensor([speech.shape[0]])
+            has_audio=True
         else:
+            print("no audio")
             speech = torch.zeros(3000, 128)
             speech_lengths = torch.LongTensor([3000])
 
-        vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
-        total_frame_num = len(vr)
-        avg_fps = round(vr.get_avg_fps() / fps)
-        frame_idx = [i for i in range(0, total_frame_num, avg_fps)]
-        frame_time = [i / avg_fps for i in frame_idx]
+        if modality == "video_audio" or modality == "video" or modality == "video_sub":
+            vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
+            total_frame_num = len(vr)
+            avg_fps = round(vr.get_avg_fps() / fps)
+            frame_idx = [i for i in range(0, total_frame_num, avg_fps)]
+            frame_time = [i / avg_fps for i in frame_idx]
 
-        if max_frames_num > 0:
-            if len(frame_idx) > max_frames_num:
-                uniform_sampled_frames = np.linspace(0, total_frame_num - 1, max_frames_num, dtype=int)
-                frame_idx = uniform_sampled_frames.tolist()
-        if task_name == "egoplan":
-            # add current ovservation frame
-            frame_idx.append(total_frame_num - 1)
-        video = vr.get_batch(frame_idx).asnumpy()
+            if max_frames_num > 0:
+                if len(frame_idx) > max_frames_num:
+                    uniform_sampled_frames = np.linspace(0, total_frame_num - 1, max_frames_num, dtype=int)
+                    frame_idx = uniform_sampled_frames.tolist()
+            if task_name == "egoplan":
+                # add current ovservation frame
+                frame_idx.append(total_frame_num - 1)
+            video = vr.get_batch(frame_idx).asnumpy()
+            has_video = True
+        else:
+            video = torch.zeros(32, 480, 854, 3)  # Placeholder for no video
+        
+        print("Has audio:", has_audio, "Has video:", has_video)
         return video, speech, speech_lengths
 
     def generate_until(self, requests: List[Instance]) -> List[str]:
         res = []
-
+        MODALITY = "sub"
+        assert MODALITY in ["video_audio", "video", "audio", "video_sub", "sub"], f"Unsupported modality: {MODALITY}"
+        print("USING MODALITY:", MODALITY)
         def _collate(x):
             # the negative sign on len(toks) sorts descending - this has a few advantages:
             # - time estimates will always be over not underestimates, which is more useful for planning
@@ -324,61 +340,60 @@ class EgoGPT(lmms):
                     self._config.image_aspect_ratio = origin_image_aspect_ratio
                     eval_logger.info(f"Resetting image aspect ratio to {origin_image_aspect_ratio}")
 
-                if visual is None or visual == []:  # for text-only tasks.
+                if False:#visual is None or visual == []:  # for text-only tasks.
                     visual = None
                     task_type = "text"
                     placeholder_count = 0
                     image_tensor = None
                 else:
-                    if len(visual) > 1 or "image_aspect_ratio" not in self._config.__dict__:  # for multi image case, we treat per image aspect ratio as "pad" by default.
-                        self._config.image_aspect_ratio = getattr(gen_kwargs, "image_aspect_ratio", "pad")
-                        eval_logger.info(f"In Multi-Image setting, image aspect ratio: {self._config.image_aspect_ratio}")
+                    # if len(visual) > 1 or "image_aspect_ratio" not in self._config.__dict__:  # for multi image case, we treat per image aspect ratio as "pad" by default.
+                    #     self._config.image_aspect_ratio = getattr(gen_kwargs, "image_aspect_ratio", "pad")
+                    #     eval_logger.info(f"In Multi-Image setting, image aspect ratio: {self._config.image_aspect_ratio}")
 
-                    if "task_type" in metadata and metadata["task_type"] == "video" and "sample_frames" in metadata:  # overwrite logic for video task with multiple static image frames
-                        assert type(visual) == list, "sample_frames must be specified for video task"
-                        sample_indices = np.linspace(0, len(visual) - 1, metadata["sample_frames"], dtype=int)
-                        visual = [visual[i] for i in sample_indices]
-                        assert len(visual) == metadata["sample_frames"]
+                    # if "task_type" in metadata and metadata["task_type"] == "video" and "sample_frames" in metadata:  # overwrite logic for video task with multiple static image frames
+                    #     assert type(visual) == list, "sample_frames must be specified for video task"
+                    #     sample_indices = np.linspace(0, len(visual) - 1, metadata["sample_frames"], dtype=int)
+                    #     visual = [visual[i] for i in sample_indices]
+                    #     assert len(visual) == metadata["sample_frames"]
 
-                        image_tensor = process_images(visual, self._image_processor, self._config)
-                        if type(image_tensor) is list:
-                            image_tensor = [_image.to(dtype=torch.float16, device=self.device) for _image in image_tensor]
-                        else:
-                            image_tensor = image_tensor.to(dtype=torch.float16, device=self.device)
-                        image_tensor = [image_tensor]
-                        task_type = "video"
-                        placeholder_count = 1
+                    #     image_tensor = process_images(visual, self._image_processor, self._config)
+                    #     if type(image_tensor) is list:
+                    #         image_tensor = [_image.to(dtype=torch.float16, device=self.device) for _image in image_tensor]
+                    #     else:
+                    #         image_tensor = image_tensor.to(dtype=torch.float16, device=self.device)
+                    #     image_tensor = [image_tensor]
+                    #     task_type = "video"
+                    #     placeholder_count = 1
 
-                    elif type(visual[0]) == PIL.Image.Image:  # For image, multi-image tasks
-                        image_tensor = process_images(visual, self._image_processor, self._config)
-                        speech = torch.zeros(3000, 128)
-                        speech_lengths = torch.LongTensor([3000])
-                        if type(image_tensor) is list:
-                            image_tensor = [_image.to(dtype=torch.float16, device=self.device) for _image in image_tensor]
-                        else:
-                            image_tensor = image_tensor.to(dtype=torch.float16, device=self.device)
+                    # elif type(visual[0]) == PIL.Image.Image:  # For image, multi-image tasks
+                    #     image_tensor = process_images(visual, self._image_processor, self._config)
+                    #     speech = torch.zeros(3000, 128)
+                    #     speech_lengths = torch.LongTensor([3000])
+                    #     if type(image_tensor) is list:
+                    #         image_tensor = [_image.to(dtype=torch.float16, device=self.device) for _image in image_tensor]
+                    #     else:
+                    #         image_tensor = image_tensor.to(dtype=torch.float16, device=self.device)
 
-                        task_type = "image"
-                        placeholder_count = len(visual) if isinstance(visual, list) else 1
+                    #     task_type = "image"
+                    #     placeholder_count = len(visual) if isinstance(visual, list) else 1
 
-                    elif type(visual[0]) == str:  # For video task
+                    if True:#type(visual[0]) == str:  # For video task  #let all logic be handled in load_video
                         image_tensor = []
-                        try:
-                            if self.video_decode_backend == "decord":
-                                if "egoplan" in visual[0]:
-                                    task_name = "egoplan"
-                                else:
-                                    task_name = None
-                                frames, speech, speech_lengths = self.load_video(video_path=visual[0], max_frames_num=self.max_frames_num, task_name=task_name)
-                            else:
-                                raise NotImplementedError("Only decord backend is supported for video task")
-                            processed_frames = self._image_processor.preprocess(frames, return_tensors="pt")["pixel_values"].half().cuda()
-                            processed_frames = processed_frames.half()
-                            image_tensor.append(processed_frames)
-                            image_sizes = [frames[0].size]
-                        except Exception as e:
-                            eval_logger.error(f"Error {e} in loading video")
-                            image_tensor = None
+                        if self.video_decode_backend == "decord":
+                            # if "egoplan" in visual[0]:
+                            #     task_name = "egoplan"
+                            # else:
+                            task_name = None
+                            frames, speech, speech_lengths = self.load_video(video_path=visual[0] if visual is not None else None, max_frames_num=self.max_frames_num, task_name=task_name, modality=MODALITY)
+                        else:
+                            raise NotImplementedError("Only decord backend is supported for video task")
+                        processed_frames = self._image_processor.preprocess(frames, return_tensors="pt")["pixel_values"].half().cuda()
+                        processed_frames = processed_frames.half()
+                        image_tensor.append(processed_frames)
+                        image_sizes = [frames[0].size]
+                        # except Exception as e:
+                        #     eval_logger.error(f"Error {e} in loading video")
+                        #     image_tensor = None
 
                         task_type = "video"
                         placeholder_count = len(frames) if self.token_strategy == "multiple" else 1

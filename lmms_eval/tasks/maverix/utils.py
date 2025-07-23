@@ -230,33 +230,33 @@ def mmug_doc_to_text_subtitle_builder(sub_dir_suffix):
         if not subtitle:
             subtitle = "No subtitles available"
         else:
-            if "all_subtitles" in lmms_eval_specific_kwargs:  # api models
+            # if "all_subtitles" in lmms_eval_specific_kwargs:  # api models
                 # Filter empty strings out
-                subtitle = list(filter(len, subtitle))
-                textlist = subtitle[2::3]
+            subtitle = list(filter(len, subtitle))
+            textlist = subtitle[2::3]
+            # print("heheeh")
+            subtitle = "\n".join(textlist)
+            # else:
+            #     if "frame_num" in lmms_eval_specific_kwargs:
+            #         frame_num = lmms_eval_specific_kwargs["frame_num"]
+            #         subtitle_by_frame, total_frame = extract_subtitles(video_path, subtitle_path)
+            #         if frame_num == -1:
+            #             frame_num = total_frame
+            #         uniform_sampled_frames = np.linspace(0, total_frame - 1, frame_num, dtype=int).tolist()
 
-                subtitle_text = "\n".join(textlist)
-            else:
-                if "frame_num" in lmms_eval_specific_kwargs:
-                    frame_num = lmms_eval_specific_kwargs["frame_num"]
-                    subtitle_by_frame, total_frame = extract_subtitles(video_path, subtitle_path)
-                    if frame_num == -1:
-                        frame_num = total_frame
-                    uniform_sampled_frames = np.linspace(0, total_frame - 1, frame_num, dtype=int).tolist()
+            #         subtitle_by_frame_idx = []
+            #         for frame_idx in uniform_sampled_frames:
+            #             for idx, title in enumerate(subtitle_by_frame):
+            #                 if frame_idx < title[1] and frame_idx >= title[0]:
+            #                     subtitle_by_frame_idx.append(idx)
+            #         subtitle_by_frame_idx = list(set(subtitle_by_frame_idx))
 
-                    subtitle_by_frame_idx = []
-                    for frame_idx in uniform_sampled_frames:
-                        for idx, title in enumerate(subtitle_by_frame):
-                            if frame_idx < title[1] and frame_idx >= title[0]:
-                                subtitle_by_frame_idx.append(idx)
-                    subtitle_by_frame_idx = list(set(subtitle_by_frame_idx))
-
-                    textlist = []
-                    for idx in subtitle_by_frame_idx:
-                        textlist.append(subtitle_by_frame[idx][2])
-                    subtitle_text = "\n".join(textlist)
-            subtitle = subtitle_text
-
+            #         textlist = []
+            #         for idx in subtitle_by_frame_idx:
+            #             textlist.append(subtitle_by_frame[idx][2])
+            #         subtitle_text = "\n".join(textlist)
+            # subtitle = subtitle_text
+        # print(subtitle)
         post_prompts = (lmms_eval_specific_kwargs or {}).get("post_prompt", "$").split("$")
         question = doc["question"]
 
