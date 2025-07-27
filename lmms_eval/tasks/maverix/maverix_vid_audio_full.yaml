@@ -1,0 +1,56 @@
+task: maverix_vid_audio_full
+test_split: test
+doc_to_visual: !function utils.mmug_doc_to_audiovisual_full
+doc_to_text: !function utils.mmug_doc_to_text_wo_subtitle
+include: _default_template_yaml
+lmms_eval_specific_kwargs:
+  gemini_api:
+    all_subtitles: True
+    
+  nova_api:
+    all_subtitles: True
+
+  gpt4v:
+    all_subtitles: True
+
+  batch_gpt4:
+    all_subtitles: True
+
+  qwen2_vl:
+    all_subtitles: True
+
+  qwen2_5_vl:
+    all_subtitles: True
+
+  llava_vid:
+    all_subtitles: True
+  
+  deepseek_vl2:
+    all_subtitles: True
+
+  grok2-vision:
+    all_subtitles: True
+  
+  claude:
+    all_subtitles: True
+
+  llava_onevision:
+    all_subtitles: True
+
+  internvl2:
+    all_subtitles: True
+
+  qwen2_5_omni:
+    all_subtitles: True
+
+  ola:
+    all_subtitles: True
+
+  egogpt:
+    all_subtitles: True
+    
+  vita:
+    all_subtitles: True
+
+  gpt4o-mini:
+    all_subtitles: True
