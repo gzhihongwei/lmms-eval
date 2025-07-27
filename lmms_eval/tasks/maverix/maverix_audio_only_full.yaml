@@ -1,7 +1,7 @@
 task: maverix_audio_only_full
 test_split: test
 doc_to_visual: !function utils.mmug_doc_to_audio_full
-doc_to_text: !function utils.mmug_doc_to_text_wo_subtitle_full
+doc_to_text: !function utils.mmug_doc_to_text_wo_subtitle
 include: _default_template_yaml
 lmms_eval_specific_kwargs:
   gemini_api:
