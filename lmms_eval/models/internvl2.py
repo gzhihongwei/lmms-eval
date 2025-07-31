@@ -320,8 +320,9 @@ class InternVL2(lmms):
     def flatten(self, input):
         new_list = []
         for i in input:
-            for j in i:
-                new_list.append(j)
+            if i:
+                for j in i:
+                    new_list.append(j)
         return new_list
 
     def generate_until(self, requests) -> List[str]:
@@ -371,20 +372,25 @@ class InternVL2(lmms):
                 else:
                     pixel_values = None
                     num_patches_list = None
-                response, history = self.model.chat(self.tokenizer, pixel_values, contexts, gen_kwargs, num_patches_list=num_patches_list, history=None, return_history=True)
+                response = self.model.chat(self.tokenizer, pixel_values, contexts, gen_kwargs, num_patches_list=num_patches_list, history=None, return_history=False)
             elif self.modality == "video":
-                assert len(visuals) == 1, f"Only one video is supported, but got {len(visuals)} videos."
-                video_path = visuals[0]
                 if self.text_only:
                     pixel_values = None
                     num_patches_list = None
-                    question = video_prefix
+                    question = contexts
                 else:
+                    assert len(visuals) == 1, f"Only one video is supported, but got {len(visuals)} videos."
+                    video_path = visuals[0]
                     pixel_values, num_patches_list = load_video(video_path, num_segments=self.num_frame)
                     pixel_values = pixel_values.to(torch.bfloat16).cuda()
                     video_prefix = "".join([f"Frame{i+1}: <image>\n" for i in range(len(num_patches_list))])
                     question = video_prefix + contexts
-                response, history = self.model.chat(self.tokenizer, pixel_values, question, gen_kwargs, num_patches_list=num_patches_list, history=None, return_history=True)
+                    
+                try:
+                    response = self.model.chat(self.tokenizer, pixel_values, question, gen_kwargs, num_patches_list=num_patches_list, history=None, return_history=False)
+                except:
+                    response = ""
+                    
             res.append(response)
             pbar.update(1)
 

@@ -142,8 +142,9 @@ class Qwen2_VL(lmms):
     def flatten(self, input):
         new_list = []
         for i in input:
-            for j in i:
-                new_list.append(j)
+            if i:
+                for j in i:
+                    new_list.append(j)
         return new_list
 
     def generate_until(self, requests: List[Instance]) -> List[str]:
