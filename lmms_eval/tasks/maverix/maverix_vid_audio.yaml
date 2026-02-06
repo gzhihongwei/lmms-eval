@@ -1,0 +1,5 @@
+task: maverix_vid_audio
+test_split: test
+doc_to_visual: !function utils.mmug_doc_to_audiovisual
+doc_to_text: !function utils.mmug_doc_to_text_wo_subtitle
+include: _default_template_yaml
